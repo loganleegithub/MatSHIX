@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "engine", "session_date", "run_mode", "evidence_tier", "publication_status", "data_status", "confidence", "primary_phase", "pressure_level", "direction", "pressure_score", "source_manifest_hash", "config_hash", "engine_artifact_hash", "answers", "probabilities", "narrative", "data_quality"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"}, "engine": {"const": "MatSHIX"}, "session_date": {"type": "string", "format": "date"}, "run_mode": {"const": "FORMAL_PIT_QUOTES"}, "evidence_tier": {"const": "FORMAL_PIT"}, "publication_status": {"const": "WITHHELD"}, "data_status": {"const": "UNKNOWN"}, "confidence": {"const": "NONE"}, "primary_phase": {"const": "UNKNOWN"}, "pressure_level": {"const": "UNKNOWN"}, "direction": {"const": "UNKNOWN"}, "pressure_score": {"type": "null"}, "source_manifest_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "engine_artifact_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "answers": {"type": "object"}, "probabilities": {"type": "object"}, "narrative": {"type": "object"}, "data_quality": {"type": "object"}
+  }
+}

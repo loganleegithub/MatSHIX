@@ -1,0 +1,6 @@
+-r requirements.lock
+build==1.4.0
+mypy==1.18.2
+pytest==9.0.2
+pytest-cov==7.0.0
+ruff==0.13.3

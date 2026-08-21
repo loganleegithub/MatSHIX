@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://matshix.local/schemas/daily_snapshot.schema.json",
+  "title": "MatSHIX research daily snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "engine", "session_date", "decision_as_of", "run_mode", "evidence_tier", "publication_status", "data_status", "confidence", "primary_phase", "pressure_level", "direction", "pressure_score", "source_manifest_hash", "config_hash", "input_hash", "engine_artifact_hash", "revision_id", "methodology_versions", "universe", "scores", "answers", "breadth", "economic_indices", "probabilities", "narrative", "data_quality"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "engine": {"const": "MatSHIX"},
+    "session_date": {"type": "string", "format": "date"},
+    "decision_as_of": {"type": "string", "format": "date-time"},
+    "run_mode": {"const": "RESEARCH_MINUTE_CLOSE"},
+    "evidence_tier": {"const": "RESEARCH_ONLY"},
+    "publication_status": {"const": "RESEARCH_ONLY_NOT_FORMAL"},
+    "data_status": {"enum": ["OK", "PARTIAL", "UNKNOWN"]},
+    "confidence": {"enum": ["FULL", "DEGRADED", "LOW", "NONE"]},
+    "primary_phase": {"type": "string"},
+    "pressure_level": {"enum": ["LOW", "WATCH", "ELEVATED", "HIGH", "EXTREME", "UNKNOWN"]},
+    "direction": {"enum": ["RISING", "FALLING", "STABLE", "UNKNOWN"]},
+    "pressure_score": {"$ref": "#/$defs/nullableNumber"},
+    "source_manifest_hash": {"$ref": "#/$defs/hash"},
+    "config_hash": {"$ref": "#/$defs/hash"},
+    "input_hash": {"$ref": "#/$defs/hash"},
+    "engine_artifact_hash": {"$ref": "#/$defs/hash"},
+    "revision_id": {"$ref": "#/$defs/hash"},
+    "methodology_versions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["surface", "feature", "state", "probability"],
+      "properties": {"surface": {"type": "string"}, "feature": {"type": "string"}, "state": {"type": "string"}, "probability": {"type": "string"}}
+    },
+    "universe": {
+      "type": "object", "additionalProperties": false,
+      "required": ["carriers", "economic_indices", "excluded_carriers"],
+      "properties": {
+        "carriers": {"const": ["SSE50_510050", "CSI300_510300", "CSI500_510500", "STAR50_588000"]},
+        "economic_indices": {"const": ["SSE50", "CSI300", "CSI500", "STAR50"]},
+        "excluded_carriers": {"const": ["STAR50_588080"]}
+      }
+    },
+    "scores": {"$ref": "#/$defs/scores"},
+    "answers": {"$ref": "#/$defs/answers"},
+    "breadth": {"$ref": "#/$defs/breadth"},
+    "economic_indices": {
+      "type": "object", "additionalProperties": false,
+      "required": ["SSE50", "CSI300", "CSI500", "STAR50"],
+      "properties": {"SSE50": {"$ref": "#/$defs/indexState"}, "CSI300": {"$ref": "#/$defs/indexState"}, "CSI500": {"$ref": "#/$defs/indexState"}, "STAR50": {"$ref": "#/$defs/indexState"}}
+    },
+    "probabilities": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cross_market_iv_jump_1d", "broad_pressure_onset_5d", "systemic_acute_stress_5d", "persistent_cross_market_stress_20d", "fast_repair_5d"],
+      "properties": {
+        "cross_market_iv_jump_1d": {"$ref": "#/$defs/probability"},
+        "broad_pressure_onset_5d": {"$ref": "#/$defs/probability"},
+        "systemic_acute_stress_5d": {"$ref": "#/$defs/probability"},
+        "persistent_cross_market_stress_20d": {"$ref": "#/$defs/probability"},
+        "fast_repair_5d": {"$ref": "#/$defs/probability"}
+      }
+    },
+    "narrative": {"$ref": "#/$defs/narrative"},
+    "data_quality": {"$ref": "#/$defs/dataQuality"}
+  },
+  "$defs": {
+    "nullableNumber": {"type": ["number", "null"]},
+    "nullableInteger": {"type": ["integer", "null"]},
+    "nullableBoolean": {"type": ["boolean", "null"]},
+    "nullableString": {"type": ["string", "null"]},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "scores": {
+      "type": "object", "additionalProperties": false,
+      "required": ["insurance_level", "shock", "down_tail", "up_tail", "persistence", "repair", "breadth"],
+      "properties": {"insurance_level": {"$ref": "#/$defs/nullableNumber"}, "shock": {"$ref": "#/$defs/nullableNumber"}, "down_tail": {"$ref": "#/$defs/nullableNumber"}, "up_tail": {"$ref": "#/$defs/nullableNumber"}, "persistence": {"$ref": "#/$defs/nullableNumber"}, "repair": {"$ref": "#/$defs/nullableNumber"}, "breadth": {"$ref": "#/$defs/nullableNumber"}}
+    },
+    "answers": {
+      "type": "object", "additionalProperties": false,
+      "required": ["level", "shock", "tail", "term", "breadth", "repair", "outlook"],
+      "properties": {"level": {"type": "string"}, "shock": {"type": "string"}, "tail": {"type": "string"}, "term": {"type": "string"}, "breadth": {"type": "string"}, "repair": {"type": "string"}, "outlook": {"type": "string"}}
+    },
+    "triMap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["large", "mid", "tech"],
+      "properties": {"large": {"$ref": "#/$defs/nullableBoolean"}, "mid": {"$ref": "#/$defs/nullableBoolean"}, "tech": {"$ref": "#/$defs/nullableBoolean"}}
+    },
+    "numberMap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["large", "mid", "tech"],
+      "properties": {"large": {"$ref": "#/$defs/nullableNumber"}, "mid": {"$ref": "#/$defs/nullableNumber"}, "tech": {"$ref": "#/$defs/nullableNumber"}}
+    },
+    "indexTriMap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["SSE50", "CSI300", "CSI500", "STAR50"],
+      "properties": {"SSE50": {"$ref": "#/$defs/nullableBoolean"}, "CSI300": {"$ref": "#/$defs/nullableBoolean"}, "CSI500": {"$ref": "#/$defs/nullableBoolean"}, "STAR50": {"$ref": "#/$defs/nullableBoolean"}}
+    },
+    "breadth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index_stressed", "segment_pressure", "segment_shock", "segment_down_tail", "segment_persistence", "segment_stressed", "stressed_segment_count", "stressed_index_count", "broad_confirmed", "systemic_confirmed", "breadth_score", "weighted_breadth_score", "nominal_index_breadth"],
+      "properties": {
+        "index_stressed": {"$ref": "#/$defs/indexTriMap"}, "segment_pressure": {"$ref": "#/$defs/numberMap"}, "segment_shock": {"$ref": "#/$defs/numberMap"}, "segment_down_tail": {"$ref": "#/$defs/numberMap"}, "segment_persistence": {"$ref": "#/$defs/numberMap"}, "segment_stressed": {"$ref": "#/$defs/triMap"}, "stressed_segment_count": {"$ref": "#/$defs/nullableInteger"}, "stressed_index_count": {"$ref": "#/$defs/nullableInteger"}, "broad_confirmed": {"$ref": "#/$defs/nullableBoolean"}, "systemic_confirmed": {"$ref": "#/$defs/nullableBoolean"}, "breadth_score": {"$ref": "#/$defs/nullableNumber"}, "weighted_breadth_score": {"$ref": "#/$defs/nullableNumber"}, "nominal_index_breadth": {"$ref": "#/$defs/nullableNumber"}
+      }
+    },
+    "surface": {
+      "type": "object", "additionalProperties": false,
+      "required": ["iv30_mf", "iv30_method", "iv60_mf", "iv60_method", "iv90_mf", "iv90_method", "fvol_30_90", "atm_iv30", "atm_iv30_method", "iv_25d_put30", "iv_25d_put30_method", "iv_25d_call30", "iv_25d_call30_method", "down_skew25", "up_skew25", "pcr_volume", "pcr_oi"],
+      "properties": {"iv30_mf": {"$ref": "#/$defs/nullableNumber"}, "iv30_method": {"type": "string"}, "iv60_mf": {"$ref": "#/$defs/nullableNumber"}, "iv60_method": {"type": "string"}, "iv90_mf": {"$ref": "#/$defs/nullableNumber"}, "iv90_method": {"type": "string"}, "fvol_30_90": {"$ref": "#/$defs/nullableNumber"}, "atm_iv30": {"$ref": "#/$defs/nullableNumber"}, "atm_iv30_method": {"type": "string"}, "iv_25d_put30": {"$ref": "#/$defs/nullableNumber"}, "iv_25d_put30_method": {"type": "string"}, "iv_25d_call30": {"$ref": "#/$defs/nullableNumber"}, "iv_25d_call30_method": {"type": "string"}, "down_skew25": {"$ref": "#/$defs/nullableNumber"}, "up_skew25": {"$ref": "#/$defs/nullableNumber"}, "pcr_volume": {"$ref": "#/$defs/nullableNumber"}, "pcr_oi": {"$ref": "#/$defs/nullableNumber"}}
+    },
+    "indexState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["carrier_id", "data_status", "surface_status", "scores", "surface", "insurance_compensation", "issues"],
+      "properties": {"carrier_id": {"type": "string"}, "data_status": {"enum": ["OK", "PARTIAL", "UNKNOWN"]}, "surface_status": {"enum": ["VALID", "DEGRADED", "INVALID", "UNKNOWN"]}, "scores": {"type": "object", "additionalProperties": false, "required": ["insurance_level", "shock", "down_tail", "up_tail", "persistence", "repair", "index_pressure"], "properties": {"insurance_level": {"$ref": "#/$defs/nullableNumber"}, "shock": {"$ref": "#/$defs/nullableNumber"}, "down_tail": {"$ref": "#/$defs/nullableNumber"}, "up_tail": {"$ref": "#/$defs/nullableNumber"}, "persistence": {"$ref": "#/$defs/nullableNumber"}, "repair": {"$ref": "#/$defs/nullableNumber"}, "index_pressure": {"$ref": "#/$defs/nullableNumber"}}}, "surface": {"$ref": "#/$defs/surface"}, "insurance_compensation": {"type": "string"}, "issues": {"type": "array", "items": {"type": "string"}}}
+    },
+    "probability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_status", "model_status", "probability_kind", "probability", "base_rate", "uplift", "target_window_end_session", "base_rate_sample_size", "base_rate_positive_count", "training_sample_size", "training_positive_count", "brier_skill", "ece", "interpretation"],
+      "properties": {"event_status": {"enum": ["ELIGIBLE", "NOT_APPLICABLE", "UNOBSERVABLE"]}, "model_status": {"enum": ["NOT_RUN", "INSUFFICIENT_HISTORY", "BASE_RATE_ONLY", "CALIBRATED_MODEL"]}, "probability_kind": {"type": ["string", "null"]}, "probability": {"$ref": "#/$defs/nullableNumber"}, "base_rate": {"$ref": "#/$defs/nullableNumber"}, "uplift": {"$ref": "#/$defs/nullableNumber"}, "target_window_end_session": {"$ref": "#/$defs/nullableString"}, "base_rate_sample_size": {"$ref": "#/$defs/nullableInteger"}, "base_rate_positive_count": {"$ref": "#/$defs/nullableInteger"}, "training_sample_size": {"$ref": "#/$defs/nullableInteger"}, "training_positive_count": {"$ref": "#/$defs/nullableInteger"}, "brier_skill": {"$ref": "#/$defs/nullableNumber"}, "ece": {"$ref": "#/$defs/nullableNumber"}, "interpretation": {"type": "string"}}
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_id", "identity", "carrier_or_index", "raw_value", "unit", "percentile", "contribution", "meaning"],
+      "properties": {"evidence_id": {"type": "string"}, "identity": {"const": "DERIVED"}, "carrier_or_index": {"type": "string"}, "raw_value": {"$ref": "#/$defs/nullableNumber"}, "unit": {"type": "string"}, "percentile": {"type": "number"}, "contribution": {"type": "number"}, "meaning": {"type": "string"}}
+    },
+    "trigger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["trigger_id", "identity", "value"],
+      "properties": {"trigger_id": {"type": "string"}, "identity": {"const": "DERIVED"}, "value": {"type": ["boolean", "string"]}}
+    },
+    "researchProxy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["economic_index_id", "metric", "method"],
+      "properties": {"economic_index_id": {"enum": ["SSE50", "CSI300", "CSI500", "STAR50"]}, "metric": {"type": "string"}, "method": {"type": "string", "pattern": "PROXY"}}
+    },
+    "narrative": {
+      "type": "object", "additionalProperties": false,
+      "required": ["headline", "drivers", "counter_evidence", "repair_evidence", "structural_triggers", "research_proxies", "what_changes_the_view", "narrative"],
+      "properties": {"headline": {"type": "string"}, "drivers": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}, "counter_evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}, "repair_evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}, "structural_triggers": {"type": "array", "items": {"$ref": "#/$defs/trigger"}}, "research_proxies": {"type": "array", "items": {"$ref": "#/$defs/researchProxy"}}, "what_changes_the_view": {"type": "array", "items": {"type": "string"}}, "narrative": {"type": "string"}}
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["carrier_id", "year", "sessions", "valid_surface_share", "iv30_bracket_share", "iv30_reference_share", "iv90_bracket_share", "iv90_reference_share", "put25_bracket_share", "put25_reference_share", "call25_bracket_share", "call25_reference_share", "proxy_surface_share", "formal_two_sided_quote_share", "relative_spread_median", "relative_spread_p95", "price_kind"],
+      "properties": {"carrier_id": {"type": "string"}, "year": {"type": "integer"}, "sessions": {"type": "integer"}, "valid_surface_share": {"type": "number"}, "iv30_bracket_share": {"type": "number"}, "iv30_reference_share": {"type": "number"}, "iv90_bracket_share": {"type": "number"}, "iv90_reference_share": {"type": "number"}, "put25_bracket_share": {"type": "number"}, "put25_reference_share": {"type": "number"}, "call25_bracket_share": {"type": "number"}, "call25_reference_share": {"type": "number"}, "proxy_surface_share": {"type": "number"}, "formal_two_sided_quote_share": {"type": "null"}, "relative_spread_median": {"type": "null"}, "relative_spread_p95": {"type": "null"}, "price_kind": {"const": "MINUTE_CLOSE_NOT_BID_ASK"}}
+    },
+    "dataQuality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["price_kind", "vintage_kind", "licence_scope", "formal_bid_ask_available", "formal_publication_allowed", "coverage", "formal_blockers"],
+      "properties": {"price_kind": {"const": "AETF 14:56 minute close"}, "vintage_kind": {"const": "PROVIDER_RECONSTRUCTED"}, "licence_scope": {"const": "LOCAL_RESEARCH_RIGHTS_UNVERIFIED"}, "formal_bid_ask_available": {"const": false}, "formal_publication_allowed": {"const": false}, "coverage": {"type": "array", "items": {"$ref": "#/$defs/coverage"}}, "formal_blockers": {"type": "array", "minItems": 1, "items": {"type": "string"}}}
+    }
+  }
+}

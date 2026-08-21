@@ -1,0 +1,40 @@
+surface_version: "1.1.0"
+feature_version: "1.0.0"
+state_version: "1.0.0"
+probability_version: "1.0.0"
+reference_sessions: 504
+minimum_percentile_history: 252
+research_minimum_percentile_history: 126
+research_iv_vov_max_span_sessions: 80
+economic_weights:
+  SSE50: 0.20
+  CSI300: 0.20
+  CSI500: 0.30
+  STAR50: 0.30
+surface:
+  minimum_otm_puts: 4
+  minimum_otm_calls: 4
+  minimum_total_strikes: 12
+  research_minimum_total_strikes: 9
+  research_include_identifiable_adjusted_contracts: true
+  minimum_expiry_days: 7
+  constant_tenors_days: [30, 60, 90]
+  parity_discount_bounds: [0.94, 1.02]
+  parity_forward_spot_bounds: [0.65, 1.35]
+  research_nearest_tenor_max_distance_days:
+    30: 18
+    60: 35
+    90: 45
+  research_nearest_delta_max_distance: 0.12
+  research_nearest_atm_log_moneyness: 0.08
+probability:
+  base_rate_minimum_samples: 252
+  research_base_rate_minimum_samples: 60
+  base_rate_maximum_samples: 504
+  training_minimum_samples: 504
+  training_maximum_samples: 1260
+  minimum_positive: 25
+  minimum_negative: 25
+  calibration_samples: 252
+  calibration_minimum_positive: 20
+  calibration_minimum_negative: 20

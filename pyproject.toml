@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matshix"
+version = "1.0.0"
+description = "Shanghai ETF option market narrative and state probability engine"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = {text = "Proprietary research software"}
+authors = [{name = "MatSHIX Engineering"}]
+dependencies = [
+  "duckdb==1.5.0",
+  "exchange-calendars==4.13.1",
+  "jsonschema==4.26.0",
+  "numpy==2.3.5",
+  "pandas==2.2.3",
+  "plotly==6.5.2",
+  "pyarrow==25.0.0",
+  "PyYAML==6.0.3",
+  "scikit-learn==1.7.2",
+  "scipy==1.17.0",
+  "typer==0.26.3",
+]
+
+[project.scripts]
+matshix = "matshix.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["matshix*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "real_data: integration check against the local AETF corpus",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["matshix"]
+
+[[tool.mypy.overrides]]
+module = [
+  "duckdb",
+  "exchange_calendars",
+  "jsonschema",
+  "jsonschema.*",
+  "pandas",
+  "pandas.*",
+  "plotly",
+  "plotly.*",
+  "pyarrow",
+  "pyarrow.*",
+  "scipy",
+  "scipy.*",
+  "sklearn",
+  "sklearn.*",
+  "yaml",
+]
+ignore_missing_imports = true

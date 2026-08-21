@@ -1,0 +1,36 @@
+manifest_version: "1.0.0"
+market: SSE_ETF_OPTIONS
+allowed_carriers:
+  SSE50_510050:
+    economic_index_id: SSE50
+    underlying_symbol: "510050.SH"
+    option_underlying_code: "OP510050.SH"
+  CSI300_510300:
+    economic_index_id: CSI300
+    underlying_symbol: "510300.SH"
+    option_underlying_code: "OP510300.SH"
+  CSI500_510500:
+    economic_index_id: CSI500
+    underlying_symbol: "510500.SH"
+    option_underlying_code: "OP510500.SH"
+  STAR50_588000:
+    economic_index_id: STAR50
+    underlying_symbol: "588000.SH"
+    option_underlying_code: "OP588000.SH"
+excluded_carriers:
+  - STAR50_588080
+research_source:
+  dataset: AETF
+  option_minutes: OPTION/1m_opt/*/*.parquet
+  option_contracts: OPTION/opt_basic.parquet
+  etf_minutes: ETF/1m_etf/*/*.parquet
+  etf_daily: ETF/1d_etf_price/*/*.parquet
+  event_time: "14:56:00 Asia/Shanghai"
+  price_field: close
+  vintage_kind: PROVIDER_RECONSTRUCTED
+  licence_scope: LOCAL_RESEARCH_RIGHTS_UNVERIFIED
+formal_source:
+  required_price_fields: [bid, ask]
+  cutoff: "14:56:59 Asia/Shanghai"
+  sync_tolerance_seconds: 5
+  status: NOT_CONFIGURED
