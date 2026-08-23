@@ -11,10 +11,8 @@ import typer
 from matshix.dashboard import export_dashboard as render_dashboard
 from matshix.data.aetf import AetfPaths, source_summary
 from matshix.pipeline import build_research_project
-from matshix.research.shortvol import run_shortvol_backtest
-from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
-from matshix.research.weather_v2_audit import run_weather_v2_business_audit
 from matshix.serialization import write_json
+from matshix.v3.build import run_v3_research_build
 from matshix.validation import verify_research_outputs
 
 app = typer.Typer(
@@ -136,6 +134,8 @@ def audit_weather_v2(
 ) -> None:
     """Run the strategy-blind Stage A business audit against the frozen V1 baseline."""
 
+    from matshix.research.weather_v2_audit import run_weather_v2_business_audit
+
     artifacts = run_weather_v2_business_audit(project_dir=project_dir, aetf_root=aetf_root)
     _emit(
         {
@@ -149,6 +149,37 @@ def audit_weather_v2(
     )
 
 
+@app.command("build-v3-research")
+def build_v3_research(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+) -> None:
+    """Run the frozen strategy-blind V3 retrospective adjudication once."""
+
+    artifacts = run_v3_research_build(
+        project_dir=project_dir,
+        aetf_root=aetf_root,
+        progress=lambda message: typer.echo(f"[MatSHIX V3] {message}", err=True),
+    )
+    _emit(
+        {
+            "top_level_status": artifacts.score["top_level_status"],
+            "dimensions": {
+                key: value["verdict"]
+                for key, value in artifacts.score["dimensions"].items()
+            },
+            "development_score": str(artifacts.score_path),
+            "failure_ledger": str(artifacts.failure_path),
+            "adjudication": str(artifacts.adjudication_path),
+            "deterministic_replay": True,
+            "strategy_inputs_used": False,
+            "formal_pit_claimed": False,
+        }
+    )
+
+
 @app.command("backtest-510300-shortvol")
 def backtest_510300_shortvol(
     aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
@@ -158,6 +189,8 @@ def backtest_510300_shortvol(
     output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
 ) -> None:
     """Run the 2023+ 510300 ETF versus minute-proxy short-vol comparison."""
+
+    from matshix.research.shortvol import run_shortvol_backtest
 
     artifacts = run_shortvol_backtest(
         project_dir=project_dir,
@@ -187,6 +220,8 @@ def diagnose_510300_shortvol_timing(
     output_dir: Annotated[Path | None, typer.Option("--output-dir")] = None,
 ) -> None:
     """Test whether known MatSHIX states separate future good and bad iron-condor outcomes."""
+
+    from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
 
     artifacts = run_shortvol_timing_diagnostic(
         project_dir=project_dir,

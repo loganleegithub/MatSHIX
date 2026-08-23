@@ -1,0 +1,96 @@
+{
+  "manifest_version": "3.0.0",
+  "baseline_id": "MATSHIX_V3_PRE_SEMANTIC_CONSTRUCTION_2026_08_24",
+  "captured_at_utc": "2026-08-23T18:14:36Z",
+  "repository": {
+    "branch": "codex/matshix-weather-v3",
+    "contract_commit": "f69b3a25b70c667d4c8c1e0e5d0a21981e40e38d",
+    "authority_commit": "52fa6c64c7cc81dd42adc9a9c11423f7c258bad3",
+    "stable_parent_commit": "ca32d3bbe175c84ea16e3c9b265b679896d23c6e",
+    "main_commit": "f69b3a25b70c667d4c8c1e0e5d0a21981e40e38d",
+    "tracking_main_commit": "f69b3a25b70c667d4c8c1e0e5d0a21981e40e38d",
+    "remote_main_commit": "f69b3a25b70c667d4c8c1e0e5d0a21981e40e38d",
+    "worktree_clean_before_semantic_construction": true
+  },
+  "authority": {
+    "document": "MATSHIX_V3_AUTHORITY.md",
+    "sha256": "01bb4a250da9bf6d738f17e5345ff7b2370c5315ad092b2c2cf3741d4114f454",
+    "construction_plan": "MATSHIX_V3_CONSTRUCTION_PLAN.md",
+    "construction_plan_sha256": "468197a6c6037ab050f0ff372190f86747361420483b93bb98d21e14af2d80bc",
+    "status": "HUMAN_FROZEN_EXECUTION_AUTHORIZED"
+  },
+  "archive": {
+    "ref": "archive/matshix-v2.2.3-development-fail",
+    "tag_object": "21686742cc06c1cf778532b2ef95bb9034adec86",
+    "peeled_commit": "93f883b063953525890430ae54731f23da354659",
+    "authority_sha256": "d47dc66aac34061d0b7287d6caa7877f3077d7f7aca1cd158b5d3805315de665",
+    "adjudication_sha256": "31d4b2721f5faf3fb41141bf89f1a6381d6a0955ab48cb26d7aa5bd0bebdc522",
+    "failure_ledger_sha256": "eaef94437687b4a854c3e7b4f386819cc904105b1e7ed1e392798512671d0a5e",
+    "whole_archive_merged": false
+  },
+  "runtime": {
+    "python": "3.12.13",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "virtualenv": "/Users/logan/MatSHIX/.venv",
+    "worktree_virtualenv_present": false,
+    "runtime_contract_ok": true,
+    "dependencies": {
+      "duckdb": "1.5.0",
+      "exchange-calendars": "4.13.1",
+      "numpy": "2.3.5",
+      "pandas": "2.2.3",
+      "plotly": "6.5.2",
+      "pyarrow": "25.0.0",
+      "scikit-learn": "1.7.2",
+      "scipy": "1.17.0"
+    }
+  },
+  "baseline_checks": {
+    "pytest": "PASS_27",
+    "ruff": "PASS",
+    "mypy": "PASS_38_SOURCE_FILES",
+    "build_sdist_wheel": "PASS",
+    "doctor": "PASS",
+    "aetf_source_validation": "PASS"
+  },
+  "aetf": {
+    "root": "/Users/logan/OptiMatrix_DATA/AETF",
+    "contract_rows": 10538,
+    "contracts_by_carrier": {
+      "CSI300_510300": 2816,
+      "CSI500_510500": 1578,
+      "SSE50_510050": 4968,
+      "STAR50_588000": 1176
+    },
+    "source_start_session": "2020-01-02",
+    "source_end_session": "2026-06-05",
+    "price_kind": "14:56 minute close",
+    "evidence_tier": "RESEARCH_ONLY",
+    "formal_bid_ask_available": false,
+    "excluded_588080": true,
+    "opt_basic_sha256": "91ab679fa57bfbeb70c3b0bf07d9974a73f729264cf1b2f7f9948ba1c53d6bef",
+    "readme_sha256": "288760a3bd330428150cc0e037d34abe5a6f7604148545dadd00b01425661380"
+  },
+  "v1_deterministic_replay": {
+    "independent_builds": 2,
+    "acceptance": "PASS_19_OF_19_BOTH",
+    "normalized_table_byte_mismatch_count": 0,
+    "extracted_sessions": 1555,
+    "state_sessions": 727,
+    "engine_artifact_hash": "1ec2a5982842b510d986b49a994a57f02496dcc9039bd4ee6e9f0212943b175b",
+    "revision_id": "626b259ce2da189d295102e2d24f031b9ae6e30da0f74a51369ab0eec8fd7c6e",
+    "table_hashes": {
+      "carrier_surface.parquet": "10b065c5c0c8e531288c7865c34bd2de388e7ce45f4e96cfc4a582b5b7225863",
+      "economic_index_feature.parquet": "22852508d059b29eb8f1d702656b8686c5e63484cb26228bc1ee99f8903db616",
+      "daily_market_state.parquet": "58191777cbe3052e59b0b831e83bf1072e65086477db2fca62758ae18a80b8cb",
+      "target_ledger.parquet": "8d4423fa3895000f80e3bf4244b70742f8422197f5a66ee494938c01753f8963",
+      "event_probability.parquet": "7d9a1807309e84a27b5e06b4e0ecc397dcca10f8cdc988307a81b028634e4832"
+    }
+  },
+  "shortvol_freeze": {
+    "src/matshix/research/shortvol.py": "8ff1e988937229abf591dde95b0d0b796fb756e9b2dd988ec11da4260c6641c8",
+    "src/matshix/research/shortvol_timing.py": "1034a0d942491ab084ee2ac20e7a172ea678927d829907aa0fccd5fd69bd0cd6",
+    "strategy_daily_returns_read": false,
+    "strategy_artifacts_opened": false
+  }
+}
