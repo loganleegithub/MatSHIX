@@ -41,13 +41,14 @@ def _state_features(rows: int = 140) -> pd.DataFrame:
     )
 
 
-def test_v221_authority_chain_matches_frozen_bytes() -> None:
+def test_v222_authority_chain_matches_frozen_bytes() -> None:
     project = Path(__file__).resolve().parents[1]
     verified = verify_v2_2_authority_chain(project)
+    assert verified["MATSHIX_V2_2_2_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_1_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_CONSTRUCTION_PLAN.md"]["status"] == "VERIFIED"
-    assert DEVELOPMENT_START == pd.Timestamp("2022-01-04")
+    assert DEVELOPMENT_START == pd.Timestamp("2020-01-02")
 
 
 def test_local_state_uses_frozen_formula_and_no_global_phase() -> None:
