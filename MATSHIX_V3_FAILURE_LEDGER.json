@@ -1,0 +1,50 @@
+{
+  "failure_ledger_version": "3.0.0",
+  "authority_sha256": "01bb4a250da9bf6d738f17e5345ff7b2370c5315ad092b2c2cf3741d4114f454",
+  "implementation_git_sha": "c2c759e7cfe75adf8568f70733e94b02e22748d2",
+  "carrier_scope": "CSI300_510300",
+  "development_era": {
+    "start_session": "2020-01-02",
+    "end_session": "2026-06-05",
+    "evidence_kind": "RETROSPECTIVE_DEVELOPMENT",
+    "evidence_tier": "RESEARCH_ONLY"
+  },
+  "top_level_status": "V3_RESEARCH_CORE_ACCEPTED",
+  "stop_dimension": null,
+  "non_pass_dimensions": [
+    {
+      "dimension": "P_HAR_Q_CHALLENGER",
+      "verdict": "FAIL",
+      "reason": "CHALLENGER_GATE_FAILED",
+      "required_core": false
+    },
+    {
+      "dimension": "QP_DIRECTION_RESEARCH",
+      "verdict": "FAIL",
+      "reason": "QP_DIRECTION_GATE_FAILED",
+      "required_core": false
+    },
+    {
+      "dimension": "FORWARD_Q",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "HISTORICAL_BUILD_ONLY",
+      "required_core": false
+    },
+    {
+      "dimension": "FORWARD_P",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "HISTORICAL_BUILD_ONLY",
+      "required_core": false
+    }
+  ],
+  "artifact_hashes": {
+    "data/processed/v3/csi300_outcome_ledger.parquet": "6d8dc4effcb608886926dce9c5ea06fc05b296b5f42e6705a3d5c8ec1f6c0545",
+    "data/processed/v3/csi300_p_ledger.parquet": "795a01a1c66bb3ecfd19d221f49be29ae8bb6a23d0c8f17195222436c29ea173",
+    "data/processed/v3/csi300_q_ledger.parquet": "16f194bd616c4144ab8e627ec0c02a56ada9008ef7bb62c5b7bf99f60d2e34a2",
+    "data/processed/v3/csi300_qp_ledger.parquet": "32c61f22bf9f1b28f6f28e1d8c58c75b33046858c46d43630f4353efa5a75a29"
+  },
+  "deterministic_replay": true,
+  "strategy_inputs_used": false,
+  "formal_pit_claimed": false,
+  "candidate_frozen": false
+}
