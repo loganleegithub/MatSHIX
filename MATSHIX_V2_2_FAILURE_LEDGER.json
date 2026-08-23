@@ -1,0 +1,52 @@
+{
+  "failure_ledger_version": "2.2.0",
+  "authority_sha256": "2b6146a0509bfd97f28e6d2299281f0a9837f5beef716f794c78e96f696267d8",
+  "execution_git_sha": "424a9f2254670996d1dc24ab8f6ea5226e058b49",
+  "carrier_scope": "CSI300_510300",
+  "development_verdict": "INSUFFICIENT_EVIDENCE",
+  "top_level_status": "V2_2_LOCAL_RESEARCH_BUILT",
+  "stop_layer": "H5_PHYSICAL_FORECAST",
+  "stop_reason": "H10_EXACT_Q_HISTORY_BELOW_FROZEN_252_TRAINING_GATE",
+  "sample_evidence": {
+    "forecast_sessions": 827,
+    "h10_exact_q_rows": 221,
+    "h20_exact_q_rows": 554,
+    "h10_h20_joint_exact_rows": 220,
+    "joint_exact_complete_state_rows": 126,
+    "complete_state_rows": 420,
+    "upside_labels": {"rows": 221, "positive": 37, "negative": 184},
+    "downside_labels": {"rows": 221, "positive": 36, "negative": 185},
+    "frozen_minimum_training_rows": 252
+  },
+  "dimensions": [
+    {"dimension": "ENGINEERING", "verdict": "PASS"},
+    {
+      "dimension": "P_VARIANCE_H20",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "VARIANCE_PAIRED_ROWS_BELOW_126"
+    },
+    {
+      "dimension": "P_UP_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET"
+    },
+    {
+      "dimension": "P_DOWN_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET"
+    },
+    {
+      "dimension": "Q_MINUS_P_H20",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "P_VARIANCE_GATE_NOT_PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "data/processed/v2_2/csi300_local_ledger.parquet": "ddc2d5ee8935a83eefc39d1ae7fadd7b9f1118630a3f65c6161ef99da7a1051d",
+    "outputs/v2_2_local/development_score.json": "aea13c6a659b43a47065d71e989986fe0ed77668cc1297e142fae1897031bc14",
+    "outputs/v2_2_local/failure_ledger.json": "553cedcd33f1afd07fb61e4d35916f85fbde03fc5e58d40d70909500c8857f1d"
+  },
+  "deterministic_replay": true,
+  "strategy_inputs_used": false,
+  "forward_acceptance_executed": false
+}
