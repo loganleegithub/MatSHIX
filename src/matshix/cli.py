@@ -15,6 +15,7 @@ from matshix.research.shortvol import run_shortvol_backtest
 from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
 from matshix.research.weather_v2_audit import run_weather_v2_business_audit
 from matshix.serialization import write_json
+from matshix.v2.outcomes import run_v2_outcome_build
 from matshix.validation import verify_research_outputs
 
 app = typer.Typer(
@@ -147,6 +148,38 @@ def audit_weather_v2(
             "semantic_implementation_started": False,
         }
     )
+
+
+@app.command("build-v2-outcomes")
+def build_v2_outcomes(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+    start: Annotated[str | None, typer.Option("--start")] = None,
+    end: Annotated[str | None, typer.Option("--end")] = None,
+) -> None:
+    """Build the Authority-bound H1 era and H2 strategy-blind outcome ledgers."""
+
+    artifacts = run_v2_outcome_build(
+        project_dir=project_dir,
+        aetf_root=aetf_root,
+        start=start,
+        end=end,
+    )
+    _emit(
+        {
+            "outcome_integrity": artifacts.coverage["gates"]["outcome_integrity"],
+            "era_registry": str(artifacts.era_registry_path),
+            "outcome_ledger": str(artifacts.outcome_ledger_path),
+            "issue_ledger": str(artifacts.issue_ledger_path),
+            "coverage": str(artifacts.coverage_path),
+            "handcheck": str(artifacts.handcheck_path),
+            "strategy_inputs_used": False,
+        }
+    )
+    if artifacts.coverage["gates"]["outcome_integrity"] != "PASS":
+        raise typer.Exit(code=1)
 
 
 @app.command("backtest-510300-shortvol")
