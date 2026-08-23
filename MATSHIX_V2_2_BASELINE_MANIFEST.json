@@ -1,0 +1,94 @@
+{
+  "manifest_version": "2.2.0",
+  "baseline_id": "MATSHIX_V2_2_PRE_CONSTRUCTION_2026_08_23",
+  "frozen_at_utc": "2026-08-23T11:58:58Z",
+  "repository": {
+    "main_sha": "aa5c84f0c9fb61227120b5e51ba9b593cd0446e8",
+    "tracking_main_sha": "aa5c84f0c9fb61227120b5e51ba9b593cd0446e8",
+    "remote_main_sha": "aa5c84f0c9fb61227120b5e51ba9b593cd0446e8",
+    "v2_1_1_parent_sha": "58c0ae91afb878b26af7671b45bc260b104e9b20",
+    "construction_plan": "MATSHIX_V2_2_CONSTRUCTION_PLAN.md",
+    "construction_plan_sha256": "effaf0f0779dc0636a5b55814bcd935a47c6085cb751752b48c56f08b30d81b8",
+    "construction_plan_status": "HUMAN_FROZEN_EXECUTION_AUTHORIZED"
+  },
+  "runtime": {
+    "doctor": "PASS",
+    "pytest": "PASS_43",
+    "ruff": "PASS",
+    "mypy": "PASS_43_SOURCE_FILES",
+    "aetf_source_validation": "PASS"
+  },
+  "aetf": {
+    "root": "/Users/logan/OptiMatrix_DATA/AETF",
+    "contract_rows": 10538,
+    "contracts_by_carrier": {
+      "CSI300_510300": 2816,
+      "CSI500_510500": 1578,
+      "SSE50_510050": 4968,
+      "STAR50_588000": 1176
+    },
+    "price_kind": "14:56 minute close",
+    "evidence_tier": "RESEARCH_ONLY",
+    "formal_bid_ask_available": false,
+    "source_start_session": "2023-01-03",
+    "source_end_session": "2026-06-05",
+    "opt_basic_sha256": "91ab679fa57bfbeb70c3b0bf07d9974a73f729264cf1b2f7f9948ba1c53d6bef",
+    "source_manifest_content_hash": "sha256:e10175123562f9945fa0bc729254fbddbc441f539f7af8ee37e92a68bb9d48a2"
+  },
+  "v1_deterministic_replay": {
+    "code_sha": "27730805f972681a1b016eae4db958d2164ede3d",
+    "independent_builds": 2,
+    "acceptance": "PASS_19_OF_19_BOTH",
+    "normalized_table_byte_mismatch_count": 0,
+    "v1_manifest_sha256": "d3432cf3a0401c4103fa16df6514250d22374a5749a21fe6b36e66f42c5edb63",
+    "table_hashes": {
+      "carrier_surface.parquet": "9757246cb492510156c1313dc6d5edcc71f83d2937381e3572282ef09d60f134",
+      "economic_index_feature.parquet": "bcd90baaf2f9289e932478f8025e84b3266a15f0dc7731cb053588c53e042b84",
+      "daily_market_state.parquet": "19a0da710c13e2894fd690dff5ef2bac018fe0c6684e915aa9f19ed8087cb18a",
+      "target_ledger.parquet": "14bc77c4706eee3d5819c828ad48082419f1843a6e6c78dfdc205b31406da764",
+      "event_probability.parquet": "ae2743a1d1701c8405a73d2f383234f88d4d2705552417d53751e2d320e6d00a"
+    }
+  },
+  "shortvol_freeze": {
+    "source_hashes": {
+      "src/matshix/research/shortvol.py": "8ff1e988937229abf591dde95b0d0b796fb756e9b2dd988ec11da4260c6641c8",
+      "src/matshix/research/shortvol_timing.py": "1034a0d942491ab084ee2ac20e7a172ea678927d829907aa0fccd5fd69bd0cd6",
+      "tests/test_shortvol_backtest.py": "1498ed0353494ce3ff5437b617c92e265f13329d3c5b75a89b7457cc7b390f14",
+      "tests/test_shortvol_timing.py": "cd1d8bee8617bf31f99ce4eebe72b69ab57d863e79416fb3d986787869fefc36",
+      "MATSHIX_510300_SHORT_VOL_BACKTEST_DESIGN.md": "f16c07698e3f56ce9173ecd2dc76c64d7c25b3c5285f0631a6350c11468e5371"
+    },
+    "failure_artifact_hashes": {
+      "outputs/backtest/510300_shortvol/daily_ledger.parquet": "5b44a39f1b651db268678250bb9cdb7e433ada13b62605b4a2f02670810ab4d7",
+      "outputs/backtest/510300_shortvol/rejection_ledger.csv": "09151d7c91fa2bc95c711941d8dec9f194ce665010e8f2604bf56c269ca956ec",
+      "outputs/backtest/510300_shortvol/report.html": "ed930ded7bff6c4c0e67905bed693dd3c539a0c22f7e8cd66b46b5e160428cf9",
+      "outputs/backtest/510300_shortvol/report.json": "3ca1945d61806f434cc67730baefca076719efd9226edcd6781f5c35892698cd",
+      "outputs/backtest/510300_shortvol/trade_ledger.csv": "baf66bc8a1f330d94353f2cb8c86fbbd9b0a2ef77097c5964a23703f66209b0c",
+      "outputs/backtest/510300_shortvol_timing/market_stress_panel.parquet": "f866429a25103714a81b97fad45b505c2130ae8c17cec27ab48bccf8c7766007",
+      "outputs/backtest/510300_shortvol_timing/opportunity_panel.parquet": "1fc8885f936df321f1b094b647b69e19a4d3d2ad18c2bee55c6d7acf16e2398e",
+      "outputs/backtest/510300_shortvol_timing/report.html": "ddd21e9ffbdf3863d4b01bfe1ce85ccb9518678d7a96a4d204d4fe1d86f6e0fa",
+      "outputs/backtest/510300_shortvol_timing/report.json": "e00346c5410900db96f32459dca1e9539d573fcdc2a691a090072195fb9b7503",
+      "outputs/backtest/510300_shortvol_timing/state_path_ledger.csv": "04c568c2d373a38d532ae465935706ac2ede781df3caf053d9536555b4f619d1",
+      "outputs/backtest/510300_shortvol_timing/worst_scenarios.csv": "e536859f204d949038cff455e620e9b36515d2ece9a0d565634b157508973635"
+    }
+  },
+  "v2_1_1_freeze": {
+    "authority_sha256": "03c06e4c861bd313d0502ecbc25ee1e18511c7a080b8bc2fa1fb3eaf451c0705",
+    "adjudication_sha256": "e18056289473b3979f10ae7377fc74582668e3bd394bff0b3d1e851f4446ea80",
+    "failure_ledger_sha256": "3f2fe224910caf2ed24177d47c1db321cce96740c33c56c5668591cdbd236c9b",
+    "q_failure_artifact_hashes": {
+      "data/processed/v2_1/q_weather_ledger.parquet": "0303c2ef0f1f143d03f791e008cee6f36c3b368bf2066ad51b33bddefe706bbd",
+      "data/processed/v2_1/q_robustness_ledger.parquet": "86c9b1bae91a9336b47638da38b4c8c2d88dc2a19fd4cea01e25cccd11d13014",
+      "data/processed/v2_1/realized_outcome_q_labeled_ledger.parquet": "30d174319223e2a32f5031abf2518bcd64366f8d63a2129d92e6fb0cf3cf6626",
+      "outputs/v2_1_q_acceptance/summary.json": "b3c5ceb15af6280a37452a83246e92e562cf8150c425ced2ca80d3693762e8ff",
+      "outputs/v2_1_q_acceptance/report.md": "f5d6b17ec20f491aa8b621e78825c2bf88d714c01541e36df4c4536f9571e0bd"
+    },
+    "h3_q": "FAIL",
+    "h4_h6": "NOT_EXECUTED"
+  },
+  "invariants": {
+    "strategy_daily_returns_read": false,
+    "shortvol_mutated": false,
+    "probability_gate_relaxed": false,
+    "baseline_status": "PASS"
+  }
+}

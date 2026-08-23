@@ -1,0 +1,29 @@
+{
+  "freeze_version": "2.2.0",
+  "status": "FROZEN_FOR_FIRST_EXECUTION",
+  "frozen_at_utc": "2026-08-23T11:58:58Z",
+  "branch": "codex/matshix-weather-v2-2-local",
+  "authority": {
+    "document": "MATSHIX_V2_2_AUTHORITY.md",
+    "sha256": "2b6146a0509bfd97f28e6d2299281f0a9837f5beef716f794c78e96f696267d8"
+  },
+  "construction_plan": {
+    "document": "MATSHIX_V2_2_CONSTRUCTION_PLAN.md",
+    "sha256": "effaf0f0779dc0636a5b55814bcd935a47c6085cb751752b48c56f08b30d81b8"
+  },
+  "baseline": {
+    "document": "MATSHIX_V2_2_BASELINE_MANIFEST.json",
+    "sha256": "f120300187c3b00b3038fbe73aa439fbc7ee03c6f3aea94a98d1f3e6dd43b6eb"
+  },
+  "parent": {
+    "git_sha": "58c0ae91afb878b26af7671b45bc260b104e9b20",
+    "authority_sha256": "03c06e4c861bd313d0502ecbc25ee1e18511c7a080b8bc2fa1fb3eaf451c0705",
+    "adjudication_sha256": "e18056289473b3979f10ae7377fc74582668e3bd394bff0b3d1e851f4446ea80",
+    "failure_ledger_sha256": "3f2fe224910caf2ed24177d47c1db321cce96740c33c56c5668591cdbd236c9b"
+  },
+  "authorized_scope": [
+    "CSI300_LOCAL_H4_H6_DEVELOPMENT",
+    "CSI300_FORWARD_ACCEPTANCE_ENTRY",
+    "CSI500_2025_SETTLEMENT_READ_ONLY_AUDIT"
+  ]
+}
