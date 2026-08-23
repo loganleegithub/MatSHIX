@@ -1,0 +1,89 @@
+{
+  "failure_ledger_version": "2.2.3",
+  "authority_sha256": "d47dc66aac34061d0b7287d6caa7877f3077d7f7aca1cd158b5d3805315de665",
+  "execution_git_sha": "d034d7cb3f059b6bf8c2a92abbc2785a11bd68cb",
+  "carrier_scope": "CSI300_510300",
+  "development_era": [
+    "2020-01-02",
+    "2026-06-05"
+  ],
+  "development_verdict": "DEVELOPMENT_FAIL",
+  "top_level_status": "V2_2_LOCAL_RESEARCH_BUILT",
+  "stop_layer": "H5_PHYSICAL_FORECAST_ACCEPTANCE",
+  "stop_reason": "P_VARIANCE_H20_FROZEN_GATE_FAILED",
+  "horizon_local_evidence": {
+    "variance_h20": {
+      "calendar_opportunity_rows": 1263,
+      "horizon_input_ready_rows": 715,
+      "raw_horizon_input_availability": 0.5661124307205068,
+      "model_opportunity_rows": 528,
+      "finite_output_rows": 528,
+      "model_coverage": 1.0
+    },
+    "path_h10_per_side": {
+      "calendar_opportunity_rows": 176,
+      "horizon_input_ready_rows": 137,
+      "raw_horizon_input_availability": 0.7784090909090909,
+      "model_opportunity_rows": 64,
+      "finite_output_rows": 64,
+      "model_coverage": 1.0
+    }
+  },
+  "dimensions": [
+    {
+      "dimension": "ENGINEERING",
+      "verdict": "PASS"
+    },
+    {
+      "dimension": "P_VARIANCE_H20",
+      "verdict": "FAIL",
+      "reason": "FROZEN_VARIANCE_GATE_FAILED",
+      "paired_rows": 528,
+      "eligible_coverage": 1.0,
+      "paired_qlike_skill": -0.022433145627791085,
+      "bootstrap_skill_lower_90": -0.14593789912802924,
+      "normalized_bias_abs": 0.0823571544359415,
+      "interval_80_empirical_coverage": 0.6231060606060606,
+      "qlike": {
+        "c2": 0.1626960388918275,
+        "b1": 0.18053560481085193,
+        "b2": 0.15912633465333267
+      }
+    },
+    {
+      "dimension": "P_UP_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET",
+      "opportunity_rows": 64,
+      "eligible_rows": 64,
+      "eligible_coverage": 1.0,
+      "positives": 17,
+      "negatives": 47
+    },
+    {
+      "dimension": "P_DOWN_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET",
+      "opportunity_rows": 64,
+      "eligible_rows": 64,
+      "eligible_coverage": 1.0,
+      "positives": 10,
+      "negatives": 54
+    },
+    {
+      "dimension": "Q_MINUS_P_H20",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "P_VARIANCE_GATE_NOT_PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "data/processed/v2_2/csi300_local_q_ledger.parquet": "939a3ade52eda96abd1ebacac9be45bd72124702a36fd733ed7c9573c9dd8c94",
+    "data/processed/v2_2/csi300_local_outcome_ledger.parquet": "6285142b36b9e7530ded6cb3a5f0eb93447fe81c0b6450052bee0b300559d88a",
+    "data/processed/v2_2/csi300_local_ledger.parquet": "7c58566ea94ed040c394cd1654779252f4cc026325e58ebe3dc7d6df4f1e9137",
+    "outputs/v2_2_local/development_score.json": "a9675b2041e0129572709c931e5d0dc6618226704f955ba699e6210646980f13",
+    "outputs/v2_2_local/failure_ledger.json": "1744f752a09a506b57baa8e944c2d0dd6c54e76e972c67eb5b83eb69d127c7a5"
+  },
+  "deterministic_replay": true,
+  "strategy_inputs_used": false,
+  "forward_acceptance_executed": false
+}
