@@ -15,6 +15,7 @@ from matshix.research.shortvol import run_shortvol_backtest
 from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
 from matshix.research.weather_v2_audit import run_weather_v2_business_audit
 from matshix.serialization import write_json
+from matshix.v2.local_station import run_v2_2_local_build
 from matshix.v2.outcomes import run_v2_outcome_build
 from matshix.v2.q_surface import run_v2_q_build
 from matshix.validation import verify_research_outputs
@@ -210,6 +211,31 @@ def build_v2_q(
         }
     )
     if artifacts.summary["q_gate"] != "PASS":
+        raise typer.Exit(code=1)
+
+
+@app.command("build-v2-2-local")
+def build_v2_2_local(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+) -> None:
+    """Build and adjudicate the frozen CSI300-local V2.2 development chain."""
+
+    artifacts = run_v2_2_local_build(project_dir=project_dir, aetf_root=aetf_root)
+    _emit(
+        {
+            "development_verdict": artifacts.score["development_verdict"],
+            "top_level_status": artifacts.score["top_level_status"],
+            "ledger": str(artifacts.ledger_path),
+            "score": str(artifacts.score_path),
+            "failure_ledger": str(artifacts.failure_path),
+            "deterministic_replay": artifacts.score["deterministic_replay"],
+            "strategy_inputs_used": False,
+        }
+    )
+    if artifacts.score["development_verdict"] != "DEVELOPMENT_PASS":
         raise typer.Exit(code=1)
 
 
