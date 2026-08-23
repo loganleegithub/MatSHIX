@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from matshix.v2.local_station import (
+    DEVELOPMENT_START,
     _available_training,
     _logistic_score,
     _path_features,
@@ -40,11 +41,13 @@ def _state_features(rows: int = 140) -> pd.DataFrame:
     )
 
 
-def test_v22_authority_chain_matches_frozen_bytes() -> None:
+def test_v221_authority_chain_matches_frozen_bytes() -> None:
     project = Path(__file__).resolve().parents[1]
     verified = verify_v2_2_authority_chain(project)
+    assert verified["MATSHIX_V2_2_1_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_CONSTRUCTION_PLAN.md"]["status"] == "VERIFIED"
+    assert DEVELOPMENT_START == pd.Timestamp("2022-01-04")
 
 
 def test_local_state_uses_frozen_formula_and_no_global_phase() -> None:
@@ -158,3 +161,4 @@ def test_local_builder_does_not_import_shortvol_runtime() -> None:
         encoding="utf-8"
     )
     assert "matshix.research.shortvol" not in source
+    assert "data/processed/v2_1" not in source

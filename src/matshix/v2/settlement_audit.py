@@ -19,15 +19,13 @@ from matshix.calendar import (
 from matshix.data.aetf import AetfPaths, extract_history, extract_settlement_history
 from matshix.serialization import file_hash, write_json
 from matshix.surface.research import _deduplicate_contracts
-from matshix.v2.local_station import (
-    AUTHORITY_SHA256,
-    AUTHORITY_VERSION,
-    verify_v2_2_authority_chain,
-)
+from matshix.v2.local_station import verify_v2_2_authority_chain
 from matshix.v2.provenance import repository_provenance, runtime_provenance
 
 AUDIT_CARRIER_ID = "CSI500_510500"
 AUDIT_INDEX_ID = "CSI500"
+AUDIT_AUTHORITY_VERSION = "2.2.0"
+AUDIT_AUTHORITY_SHA256 = "2b6146a0509bfd97f28e6d2299281f0a9837f5beef716f794c78e96f696267d8"
 AUDIT_START = pd.Timestamp("2025-01-02")
 AUDIT_END = pd.Timestamp("2025-12-31")
 PROTOCOL_DOCUMENT = "MATSHIX_V2_2_SETTLEMENT_AUDIT_PROTOCOL.md"
@@ -359,7 +357,7 @@ def _render_report(result: dict[str, Any]) -> str:
         "",
         f"- Verdict: `{verdict['verdict']}`",
         f"- Reason: `{verdict['reason']}`",
-        f"- Authority: `{AUTHORITY_VERSION}` / `{AUTHORITY_SHA256}`",
+        f"- Authority: `{AUDIT_AUTHORITY_VERSION}` / `{AUDIT_AUTHORITY_SHA256}`",
         f"- Protocol: `{PROTOCOL_SHA256}`",
         "- Strategy inputs used: `false`",
         "- Pricing tolerances changed: `false`",
@@ -434,8 +432,8 @@ def run_v2_2_settlement_audit(
     rows = merge_proxy_audits(settlement_rows, minute_rows)
     classification = classify_audit(rows)
     result: dict[str, Any] = {
-        "audit_version": AUTHORITY_VERSION,
-        "authority_sha256": AUTHORITY_SHA256,
+        "audit_version": AUDIT_AUTHORITY_VERSION,
+        "authority_sha256": AUDIT_AUTHORITY_SHA256,
         "protocol_document": PROTOCOL_DOCUMENT,
         "protocol_sha256": PROTOCOL_SHA256,
         "carrier_scope": AUDIT_CARRIER_ID,

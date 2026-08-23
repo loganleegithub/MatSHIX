@@ -10,18 +10,27 @@ import pandas as pd
 from scipy.stats import spearmanr
 from sklearn.linear_model import LogisticRegression, Ridge
 
+from matshix.calendar import exchange_sessions_in_range, surface_cutoff
 from matshix.data.aetf import AetfPaths, extract_history
 from matshix.features.history import build_index_feature_history
 from matshix.features.percentile import rolling_midrank_percentile
 from matshix.serialization import file_hash, write_json
 from matshix.storage import write_parquet
-from matshix.v2.outcomes import _extract_etf_minutes, build_daily_realized_inputs
+from matshix.v2.authority import EXPECTED_LISTING_DATES
+from matshix.v2.outcomes import (
+    _extract_etf_minutes,
+    build_daily_realized_inputs,
+    build_realized_outcome_ledger,
+)
 from matshix.v2.provenance import repository_provenance, runtime_provenance
-from matshix.v2.q_surface import enrich_outcomes_with_q
+from matshix.v2.q_surface import _build_q_ledger, _surface_rows, enrich_outcomes_with_q
 
-AUTHORITY_VERSION = "2.2.0"
-AUTHORITY_DOCUMENT = "MATSHIX_V2_2_AUTHORITY.md"
-AUTHORITY_SHA256 = "2b6146a0509bfd97f28e6d2299281f0a9837f5beef716f794c78e96f696267d8"
+AUTHORITY_VERSION = "2.2.1"
+AUTHORITY_DOCUMENT = "MATSHIX_V2_2_1_AUTHORITY.md"
+AUTHORITY_SHA256 = "eb10f33b6b45da6707fabebba9a1556854c5e52f44978d4e3f82a47f9d4886b0"
+V22_AUTHORITY_SHA256 = "2b6146a0509bfd97f28e6d2299281f0a9837f5beef716f794c78e96f696267d8"
+V22_ADJUDICATION_SHA256 = "c4f376d3d177a95d23ad2c8cd6059c40b83b1878d13c8bd61c7a0f31a47acf6b"
+V22_FAILURE_SHA256 = "a3a4350016cc4e223adda8d4f0521cf1b18536340ffbdab4f9db58f34d07938e"
 PLAN_SHA256 = "effaf0f0779dc0636a5b55814bcd935a47c6085cb751752b48c56f08b30d81b8"
 BASELINE_SHA256 = "f120300187c3b00b3038fbe73aa439fbc7ee03c6f3aea94a98d1f3e6dd43b6eb"
 FREEZE_SHA256 = "41704acbece335b2c74e35b954d4f1358962fe4f484bf1f89f8efc3e071be64d"
@@ -33,10 +42,8 @@ PARENT_FAILURE_SHA256 = "3f2fe224910caf2ed24177d47c1db321cce96740c33c56c5668591c
 
 CARRIER_ID = "CSI300_510300"
 ECONOMIC_INDEX_ID = "CSI300"
-DEVELOPMENT_START = pd.Timestamp("2023-01-03")
+DEVELOPMENT_START = pd.Timestamp("2022-01-04")
 DEVELOPMENT_END = pd.Timestamp("2026-06-05")
-Q_INPUT_SHA256 = "86c9b1bae91a9336b47638da38b4c8c2d88dc2a19fd4cea01e25cccd11d13014"
-OUTCOME_INPUT_SHA256 = "4204f5a57e144309627e7ce41510c3fa065c590214a291b1a647729c855652d4"
 
 STATE_FIELDS = (
     "common_iv_shock",
@@ -75,6 +82,9 @@ class V22LocalArtifacts:
 def verify_v2_2_authority_chain(project: Path) -> dict[str, dict[str, str]]:
     expected = {
         AUTHORITY_DOCUMENT: AUTHORITY_SHA256,
+        "MATSHIX_V2_2_AUTHORITY.md": V22_AUTHORITY_SHA256,
+        "MATSHIX_V2_2_DEVELOPMENT_ADJUDICATION.md": V22_ADJUDICATION_SHA256,
+        "MATSHIX_V2_2_FAILURE_LEDGER.json": V22_FAILURE_SHA256,
         "MATSHIX_V2_2_CONSTRUCTION_PLAN.md": PLAN_SHA256,
         "MATSHIX_V2_2_BASELINE_MANIFEST.json": BASELINE_SHA256,
         "MATSHIX_V2_2_FREEZE.json": FREEZE_SHA256,
@@ -1168,19 +1178,72 @@ def _failure_ledger(score: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_extended_local_inputs(
+    option_prices: pd.DataFrame,
+    etf_marks: pd.DataFrame,
+    daily: pd.DataFrame,
+    path_marks: dict[tuple[str, pd.Timestamp], np.ndarray],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    forecast_sessions = exchange_sessions_in_range(DEVELOPMENT_START, DEVELOPMENT_END)
+    all_outcomes, _ = build_realized_outcome_ledger(
+        daily,
+        path_marks,
+        forecast_sessions=forecast_sessions,
+        listing_dates=EXPECTED_LISTING_DATES,
+    )
+    outcomes = all_outcomes.loc[
+        all_outcomes["carrier_id"].astype(str).eq(CARRIER_ID)
+        & all_outcomes["horizon_sessions"].isin([10, 20])
+    ].copy()
+    metadata = outcomes[
+        [
+            "forecast_session",
+            "input_known_at",
+            "target_start_session",
+            "target_end_session",
+            "carrier_id",
+            "economic_index_id",
+            "horizon_sessions",
+            "coverage_regime",
+            "available_carrier_count",
+            "listing_age_sessions",
+            "data_status",
+        ]
+    ].copy()
+    local_options = option_prices.loc[
+        option_prices["carrier_id"].astype(str).eq(CARRIER_ID)
+    ].copy()
+    local_marks = etf_marks.loc[etf_marks["carrier_id"].astype(str).eq(CARRIER_ID)].copy()
+    surface_rows, surfaces = _surface_rows(
+        local_options,
+        local_marks,
+        price_proxy="MINUTE_CLOSE_1456",
+        observation_time=surface_cutoff,
+        methodology_version="MATSHIX_RESEARCH_MINUTE_CLOSE_V2",
+        progress=None,
+    )
+    q = _build_q_ledger(
+        metadata,
+        surface_rows,
+        surfaces,
+        price_proxy="MINUTE_CLOSE_1456",
+        observation_time=surface_cutoff,
+        known_at=surface_cutoff,
+        liquidity_status="RECONSTRUCTED_ASOF_CLOSE_NO_BID_ASK",
+    )
+    return (
+        q.sort_values(["forecast_session", "horizon_sessions"], kind="stable").reset_index(
+            drop=True
+        ),
+        outcomes.sort_values(
+            ["forecast_session", "horizon_sessions"], kind="stable"
+        ).reset_index(drop=True),
+    )
+
+
 def run_v2_2_local_build(*, project_dir: Path, aetf_root: Path) -> V22LocalArtifacts:
     project = project_dir.expanduser().resolve()
     authority_chain = verify_v2_2_authority_chain(project)
-    q_path = project / "data/processed/v2_1/q_robustness_ledger.parquet"
-    outcome_path = project / "data/processed/v2_1/realized_outcome_ledger.parquet"
-    if not q_path.is_file() or not outcome_path.is_file():
-        raise FileNotFoundError("frozen V2.1.1 Q and outcome ledgers are required")
-    if file_hash(q_path).removeprefix("sha256:") != Q_INPUT_SHA256:
-        raise ValueError("frozen V2.1.1 14:56 Q ledger hash mismatch")
-    if file_hash(outcome_path).removeprefix("sha256:") != OUTCOME_INPUT_SHA256:
-        raise ValueError("frozen V2.1.1 outcome ledger hash mismatch")
-    q = pd.read_parquet(q_path)
-    outcomes = pd.read_parquet(outcome_path)
     paths = AetfPaths.from_root(aetf_root)
     extraction = extract_history(
         paths,
@@ -1188,7 +1251,14 @@ def run_v2_2_local_build(*, project_dir: Path, aetf_root: Path) -> V22LocalArtif
         end=DEVELOPMENT_END.date().isoformat(),
     )
     minutes = _extract_etf_minutes(paths, start=DEVELOPMENT_START, end=DEVELOPMENT_END)
+    minutes = minutes.loc[minutes["carrier_id"].astype(str).eq(CARRIER_ID)].copy()
     daily, path_marks = build_daily_realized_inputs(minutes)
+    q, outcomes = build_extended_local_inputs(
+        extraction.option_prices,
+        extraction.etf_marks,
+        daily,
+        path_marks,
+    )
     first_ledger, first_score = build_and_score_development(
         q, outcomes, extraction.etf_marks, daily, path_marks
     )
@@ -1201,6 +1271,10 @@ def run_v2_2_local_build(*, project_dir: Path, aetf_root: Path) -> V22LocalArtif
 
     processed = project / "data/processed/v2_2"
     output = project / "outputs/v2_2_local"
+    q_path = write_parquet(q, processed / "csi300_local_q_ledger.parquet")
+    outcome_path = write_parquet(
+        outcomes, processed / "csi300_local_outcome_ledger.parquet"
+    )
     ledger_path = write_parquet(first_ledger, processed / "csi300_local_ledger.parquet")
     score = {
         **first_score,
@@ -1208,12 +1282,13 @@ def run_v2_2_local_build(*, project_dir: Path, aetf_root: Path) -> V22LocalArtif
         "repository": repository_provenance(project),
         "runtime": runtime_provenance(),
         "inputs": {
+            "aetf_root": str(Path(aetf_root).expanduser().resolve()),
+            "option_contracts_sha256": file_hash(paths.option_contracts),
+            "aetf_readme_sha256": file_hash(paths.readme),
             "q_ledger": str(q_path.relative_to(project)),
             "q_ledger_sha256": file_hash(q_path),
             "outcome_ledger": str(outcome_path.relative_to(project)),
             "outcome_ledger_sha256": file_hash(outcome_path),
-            "aetf_root": str(Path(aetf_root).expanduser().resolve()),
-            "option_contracts_sha256": file_hash(paths.option_contracts),
         },
         "deterministic_replay": True,
         "artifacts": {
