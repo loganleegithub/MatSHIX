@@ -8,10 +8,13 @@ import pytest
 
 from matshix.v2.local_station import (
     DEVELOPMENT_START,
+    STATE_FIELDS,
+    VARIANCE_C2_FEATURES,
     _available_training,
     _logistic_score,
     _path_features,
     _ridge_forecast,
+    add_physical_scores,
     build_local_state,
     verify_v2_2_authority_chain,
 )
@@ -41,9 +44,10 @@ def _state_features(rows: int = 140) -> pd.DataFrame:
     )
 
 
-def test_v222_authority_chain_matches_frozen_bytes() -> None:
+def test_v223_authority_chain_matches_frozen_bytes() -> None:
     project = Path(__file__).resolve().parents[1]
     verified = verify_v2_2_authority_chain(project)
+    assert verified["MATSHIX_V2_2_3_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_2_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_1_AUTHORITY.md"]["status"] == "VERIFIED"
     assert verified["MATSHIX_V2_2_AUTHORITY.md"]["status"] == "VERIFIED"
@@ -117,6 +121,67 @@ def test_local_path_registry_has_no_breadth_feature() -> None:
     assert "side_tail_breadth" not in down
     assert "up_tail_persistence" in up
     assert "down_tail_persistence" in down
+    assert "q_term_log_ratio_h10_h20" not in VARIANCE_C2_FEATURES
+    assert "q_term_log_ratio_h10_h20" not in up
+    assert "q_term_log_ratio_h10_h20" not in down
+
+
+def _physical_model_frame(*, h10_status: str, h20_status: str) -> pd.DataFrame:
+    rows = 253
+    values = np.arange(rows, dtype=float)
+    known_at = pd.bdate_range("2024-01-02", periods=rows, tz="Asia/Shanghai") + pd.Timedelta(
+        hours=14, minutes=56
+    )
+    frame = pd.DataFrame(
+        {
+            "known_at": known_at,
+            "outcome_available_at_h10": known_at,
+            "outcome_available_at_h20": known_at,
+            "label_status_h20": "OBSERVED",
+            "rv_variance_h20": 0.08 + 0.01 * np.sin(values / 9.0),
+            "rv_forecast30": 0.09 + 0.01 * np.cos(values / 11.0),
+            "upside_path_breach_h10": values.astype(int) % 4 == 0,
+            "downside_path_breach_h10": values.astype(int) % 5 == 0,
+            "q_horizon_status_h10": h10_status,
+            "q_horizon_status_h20": h20_status,
+            "state_status": "OK",
+            "log_rv_d1_lag1": 0.1 + np.sin(values / 7.0),
+            "log_mean_rv_d5_lag1": 0.2 + np.cos(values / 13.0),
+            "log_mean_rv_d22_lag1": 0.3 + np.sin(values / 17.0),
+            "log_q_variance_h10": -2.0 + 0.1 * np.sin(values / 19.0),
+            "log_q_variance_h20": -1.8 + 0.1 * np.cos(values / 23.0),
+            "up_skew25": 0.1 + 0.01 * np.sin(values / 5.0),
+            "down_skew25": 0.1 + 0.01 * np.cos(values / 5.0),
+        }
+    )
+    for offset, field in enumerate(STATE_FIELDS, start=2):
+        frame[field] = 40.0 + offset + np.sin(values / float(offset))
+    for side, offset in (("up", 7.0), ("down", 11.0)):
+        frame[f"past_{side}_max_move_d5_lag1"] = 0.01 + np.sin(values / offset)
+        frame[f"past_{side}_max_move_d20_lag1"] = 0.02 + np.cos(values / offset)
+        frame[f"past_{side}_overnight_gap_d20_lag1"] = 0.03 + np.sin(values / (offset + 2.0))
+    return frame
+
+
+def test_horizon_local_models_do_not_require_the_other_q_horizon() -> None:
+    h20_only = add_physical_scores(
+        _physical_model_frame(h10_status="MISSING_BRACKET", h20_status="OK")
+    ).iloc[-1]
+    assert bool(h20_only["variance_calendar_opportunity"])
+    assert bool(h20_only["variance_horizon_input_ready"])
+    assert bool(h20_only["variance_opportunity"])
+    assert pd.notna(h20_only["p_c2_variance_h20"])
+    assert not bool(h20_only["up_path_horizon_input_ready"])
+
+    h10_only = add_physical_scores(
+        _physical_model_frame(h10_status="OK", h20_status="MISSING_BRACKET")
+    ).iloc[-1]
+    assert bool(h10_only["up_path_calendar_opportunity"])
+    assert bool(h10_only["up_path_horizon_input_ready"])
+    assert bool(h10_only["up_path_opportunity"])
+    assert pd.notna(h10_only["p_up_c2_raw_score_h10"])
+    assert pd.notna(h10_only["p_down_c2_raw_score_h10"])
+    assert not bool(h10_only["variance_horizon_input_ready"])
 
 
 def test_frozen_models_are_deterministic_and_emit_raw_score() -> None:

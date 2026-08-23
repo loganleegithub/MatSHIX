@@ -25,9 +25,12 @@ from matshix.v2.outcomes import (
 from matshix.v2.provenance import repository_provenance, runtime_provenance
 from matshix.v2.q_surface import _build_q_ledger, _surface_rows, enrich_outcomes_with_q
 
-AUTHORITY_VERSION = "2.2.2"
-AUTHORITY_DOCUMENT = "MATSHIX_V2_2_2_AUTHORITY.md"
-AUTHORITY_SHA256 = "5f21d1f2842ae91a0a845324b3823302f33da54a39efa9ae847b7d40b20d056b"
+AUTHORITY_VERSION = "2.2.3"
+AUTHORITY_DOCUMENT = "MATSHIX_V2_2_3_AUTHORITY.md"
+AUTHORITY_SHA256 = "d47dc66aac34061d0b7287d6caa7877f3077d7f7aca1cd158b5d3805315de665"
+V222_AUTHORITY_SHA256 = "5f21d1f2842ae91a0a845324b3823302f33da54a39efa9ae847b7d40b20d056b"
+V222_ADJUDICATION_SHA256 = "3b834c22871a935690cca2481302d45b3809ee7f3791490c374e85ff354dc10a"
+V222_FAILURE_SHA256 = "9e3db4b51c5db2b013b61c6eb0633ad232c5ed87fbe799b394bad08a822824d8"
 V221_AUTHORITY_SHA256 = "eb10f33b6b45da6707fabebba9a1556854c5e52f44978d4e3f82a47f9d4886b0"
 V221_ADJUDICATION_SHA256 = "7f1d629b8d77f61b484d289a3e1bf05e1a0756399294651af85003ad6136f7ac"
 V221_FAILURE_SHA256 = "3e15522e4cb3a579bb610ffabf602fe97043a04e5d95c79b8f68efe13d8dcc50"
@@ -38,9 +41,7 @@ PLAN_SHA256 = "effaf0f0779dc0636a5b55814bcd935a47c6085cb751752b48c56f08b30d81b8"
 BASELINE_SHA256 = "f120300187c3b00b3038fbe73aa439fbc7ee03c6f3aea94a98d1f3e6dd43b6eb"
 FREEZE_SHA256 = "41704acbece335b2c74e35b954d4f1358962fe4f484bf1f89f8efc3e071be64d"
 PARENT_AUTHORITY_SHA256 = "03c06e4c861bd313d0502ecbc25ee1e18511c7a080b8bc2fa1fb3eaf451c0705"
-PARENT_ADJUDICATION_SHA256 = (
-    "e18056289473b3979f10ae7377fc74582668e3bd394bff0b3d1e851f4446ea80"
-)
+PARENT_ADJUDICATION_SHA256 = "e18056289473b3979f10ae7377fc74582668e3bd394bff0b3d1e851f4446ea80"
 PARENT_FAILURE_SHA256 = "3f2fe224910caf2ed24177d47c1db321cce96740c33c56c5668591cdbd236c9b"
 
 CARRIER_ID = "CSI300_510300"
@@ -69,7 +70,6 @@ VARIANCE_B2_FEATURES = (
 )
 VARIANCE_C2_FEATURES = VARIANCE_B2_FEATURES + (
     "log_q_variance_h20",
-    "q_term_log_ratio_h10_h20",
     *STATE_FIELDS,
 )
 
@@ -85,6 +85,9 @@ class V22LocalArtifacts:
 def verify_v2_2_authority_chain(project: Path) -> dict[str, dict[str, str]]:
     expected = {
         AUTHORITY_DOCUMENT: AUTHORITY_SHA256,
+        "MATSHIX_V2_2_2_AUTHORITY.md": V222_AUTHORITY_SHA256,
+        "MATSHIX_V2_2_2_DEVELOPMENT_ADJUDICATION.md": V222_ADJUDICATION_SHA256,
+        "MATSHIX_V2_2_2_FAILURE_LEDGER.json": V222_FAILURE_SHA256,
         "MATSHIX_V2_2_1_AUTHORITY.md": V221_AUTHORITY_SHA256,
         "MATSHIX_V2_2_1_DEVELOPMENT_ADJUDICATION.md": V221_ADJUDICATION_SHA256,
         "MATSHIX_V2_2_1_FAILURE_LEDGER.json": V221_FAILURE_SHA256,
@@ -148,9 +151,7 @@ def add_local_percentiles(features: pd.DataFrame) -> pd.DataFrame:
     result["p_negative_etf_return_1d"] = result["p_neg_etf_return_1d"]
     result["p_positive_etf_return_5d"] = result["p_etf_return_5d"]
     result["p_negative_d5_log_iv30"] = result["p_neg_d5_log_iv30"]
-    result["p_negative_d5_iv_vol_of_vol20"] = result[
-        "p_neg_d5_iv_vol_of_vol20"
-    ]
+    result["p_negative_d5_iv_vol_of_vol20"] = result["p_neg_d5_iv_vol_of_vol20"]
     result["p_negative_d5_fvol_30_90"] = result["p_neg_d5_fvol_30_90"]
     result["p_negative_d5_down_skew25"] = result["p_neg_d5_down_skew25"]
     return result
@@ -189,9 +190,7 @@ def build_local_state(features: pd.DataFrame) -> pd.DataFrame:
     for side in ("down", "up"):
         tail = pd.to_numeric(result[f"{side}_tail"], errors="coerce")
         active = tail.ge(60.0).astype(float).where(tail.notna())
-        result[f"{side}_tail_persistence"] = active.rolling(
-            5, min_periods=5
-        ).sum() * 20.0
+        result[f"{side}_tail_persistence"] = active.rolling(5, min_periods=5).sum() * 20.0
     result["variance_repair"] = _weighted(
         result,
         (
@@ -219,8 +218,8 @@ def build_local_state(features: pd.DataFrame) -> pd.DataFrame:
         ),
         scale=100.0,
     )
-    result["term_repair"] = (
-        100.0 * pd.to_numeric(result["p_negative_d5_fvol_30_90"], errors="coerce")
+    result["term_repair"] = 100.0 * pd.to_numeric(
+        result["p_negative_d5_fvol_30_90"], errors="coerce"
     )
     result["state_status"] = np.where(_all_finite(result, STATE_FIELDS), "OK", "UNKNOWN")
     result["market_breadth"] = "NOT_APPLICABLE"
@@ -284,27 +283,17 @@ def _daily_predictors(
     daily_variance = pd.to_numeric(frame["daily_total_variance"], errors="coerce")
     frame["log_rv_d1_lag1"] = np.log((252.0 * daily_variance.shift(1)).clip(lower=1e-12))
     frame["log_mean_rv_d5_lag1"] = np.log(
-        (
-            252.0
-            * daily_variance.shift(1).rolling(5, min_periods=5).mean()
-        ).clip(lower=1e-12)
+        (252.0 * daily_variance.shift(1).rolling(5, min_periods=5).mean()).clip(lower=1e-12)
     )
     frame["log_mean_rv_d22_lag1"] = np.log(
-        (
-            252.0
-            * daily_variance.shift(1).rolling(22, min_periods=22).mean()
-        ).clip(lower=1e-12)
+        (252.0 * daily_variance.shift(1).rolling(22, min_periods=22).mean()).clip(lower=1e-12)
     )
     for side in ("up", "down"):
         moves = pd.to_numeric(frame[f"daily_{side}_move"], errors="coerce").shift(1)
         gaps = pd.to_numeric(frame[f"daily_{side}_overnight"], errors="coerce").shift(1)
         frame[f"past_{side}_max_move_d5_lag1"] = moves.rolling(5, min_periods=5).max()
-        frame[f"past_{side}_max_move_d20_lag1"] = moves.rolling(
-            20, min_periods=20
-        ).max()
-        frame[f"past_{side}_overnight_gap_d20_lag1"] = gaps.rolling(
-            20, min_periods=20
-        ).max()
+        frame[f"past_{side}_max_move_d20_lag1"] = moves.rolling(20, min_periods=20).max()
+        frame[f"past_{side}_overnight_gap_d20_lag1"] = gaps.rolling(20, min_periods=20).max()
     return frame.rename(columns={"session_date": "forecast_session"})
 
 
@@ -329,18 +318,16 @@ def _wide_q(q: pd.DataFrame) -> pd.DataFrame:
                 if field != "forecast_session"
             }
         )
-        output = selected if output is None else output.merge(
-            selected, on="forecast_session", how="outer", validate="one_to_one"
+        output = (
+            selected
+            if output is None
+            else output.merge(selected, on="forecast_session", how="outer", validate="one_to_one")
         )
     assert output is not None
     q10 = pd.to_numeric(output["q_variance_h10"], errors="coerce")
     q20 = pd.to_numeric(output["q_variance_h20"], errors="coerce")
-    exact = output["q_horizon_status_h10"].eq("OK") & output[
-        "q_horizon_status_h20"
-    ].eq("OK")
-    output["q_term_log_ratio_h10_h20"] = np.log(q10 / q20).where(
-        exact & q10.gt(0) & q20.gt(0)
-    )
+    exact = output["q_horizon_status_h10"].eq("OK") & output["q_horizon_status_h20"].eq("OK")
+    output["q_term_log_ratio_h10_h20"] = np.log(q10 / q20).where(exact & q10.gt(0) & q20.gt(0))
     output["log_q_variance_h10"] = np.log(q10).where(q10.gt(0))
     output["log_q_variance_h20"] = np.log(q20).where(q20.gt(0))
     output["known_at"] = output["known_at_h20"]
@@ -411,8 +398,7 @@ def build_local_feature_ledger(
     path_marks: dict[tuple[str, pd.Timestamp], np.ndarray],
 ) -> pd.DataFrame:
     local_q = q.loc[
-        q["carrier_id"].astype(str).eq(CARRIER_ID)
-        & q["horizon_sessions"].isin([10, 20])
+        q["carrier_id"].astype(str).eq(CARRIER_ID) & q["horizon_sessions"].isin([10, 20])
     ].copy()
     local_q = local_q.sort_values(
         ["forecast_session", "horizon_sessions"], kind="stable"
@@ -438,9 +424,7 @@ def build_local_feature_ledger(
         suffixes=("", "_daily"),
     )
     frame = frame.merge(q_wide, on="forecast_session", how="left", validate="one_to_one")
-    frame = frame.merge(
-        outcome_wide, on="forecast_session", how="left", validate="one_to_one"
-    )
+    frame = frame.merge(outcome_wide, on="forecast_session", how="left", validate="one_to_one")
     frame["carrier_id"] = CARRIER_ID
     frame["economic_index_id"] = ECONOMIC_INDEX_ID
     frame["authority_version"] = AUTHORITY_VERSION
@@ -562,7 +546,6 @@ def _path_features(side: str, *, challenger: bool) -> tuple[str, ...]:
     repair = "upside_repair" if side == "up" else "downside_repair"
     return base + (
         "log_q_variance_h10",
-        "q_term_log_ratio_h10_h20",
         f"{side}_tail",
         f"{side}_skew25",
         f"{side}_tail_persistence",
@@ -583,12 +566,16 @@ def add_physical_scores(frame: pd.DataFrame) -> pd.DataFrame:
     for field in variance_columns:
         result[field] = math.nan
     result["p_variance_model_status"] = "INSUFFICIENT_HISTORY"
+    result["variance_calendar_opportunity"] = False
+    result["variance_horizon_input_ready"] = False
     result["variance_opportunity"] = False
     for side in ("up", "down"):
         result[f"p_{side}_b0_base_rate_h10"] = math.nan
         result[f"p_{side}_b1_raw_score_h10"] = math.nan
         result[f"p_{side}_c2_raw_score_h10"] = math.nan
         result[f"p_{side}_model_status"] = "INSUFFICIENT_HISTORY"
+        result[f"{side}_path_calendar_opportunity"] = False
+        result[f"{side}_path_horizon_input_ready"] = False
         result[f"{side}_path_opportunity"] = False
 
     for position in range(len(result)):
@@ -599,13 +586,11 @@ def add_physical_scores(frame: pd.DataFrame) -> pd.DataFrame:
             target="rv_variance_h20",
             available_at="outcome_available_at_h20",
         )
-        observed_current = (
-            str(current.get("label_status_h20")) == "OBSERVED"
-            and pd.notna(current.get("rv_variance_h20"))
+        observed_current = str(current.get("label_status_h20")) == "OBSERVED" and pd.notna(
+            current.get("rv_variance_h20")
         )
-        result.at[position, "variance_opportunity"] = bool(
-            len(variance_training) >= 252 and observed_current
-        )
+        calendar_opportunity = bool(len(variance_training) >= 252 and observed_current)
+        result.at[position, "variance_calendar_opportunity"] = calendar_opportunity
         if len(variance_training) >= 252:
             climatology = variance_training.tail(504)
             target_values = pd.to_numeric(climatology["rv_variance_h20"], errors="coerce")
@@ -625,15 +610,17 @@ def add_physical_scores(frame: pd.DataFrame) -> pd.DataFrame:
         if pd.notna(b1) and float(b1) > 0:
             result.at[position, "p_b1_variance_h20"] = float(b1)
         c2_eligible = bool(
-            current.get("q_horizon_status_h10") == "OK"
-            and current.get("q_horizon_status_h20") == "OK"
-            and current.get("state_status") == "OK"
+            current.get("q_horizon_status_h20") == "OK" and current.get("state_status") == "OK"
         )
         training_exact = variance_training.loc[
-            variance_training["q_horizon_status_h10"].eq("OK")
-            & variance_training["q_horizon_status_h20"].eq("OK")
+            variance_training["q_horizon_status_h20"].eq("OK")
             & variance_training["state_status"].eq("OK")
         ].copy()
+        horizon_input_ready = bool(calendar_opportunity and c2_eligible)
+        result.at[position, "variance_horizon_input_ready"] = horizon_input_ready
+        result.at[position, "variance_opportunity"] = bool(
+            horizon_input_ready and len(training_exact) >= 252
+        )
         if c2_eligible:
             c2, low, high, status = _ridge_forecast(
                 training_exact,
@@ -661,13 +648,13 @@ def add_physical_scores(frame: pd.DataFrame) -> pd.DataFrame:
             positives = int(labels.sum())
             negatives = int(len(labels) - positives)
             target_current = current.get(label)
-            opportunity = bool(
+            calendar_opportunity = bool(
                 len(training) >= 252
                 and positives >= 20
                 and negatives >= 20
                 and pd.notna(target_current)
             )
-            result.at[position, f"{side}_path_opportunity"] = opportunity
+            result.at[position, f"{side}_path_calendar_opportunity"] = calendar_opportunity
             if len(training) >= 252:
                 base = training.tail(504)[label].dropna().astype(bool)
                 if len(base) >= 252:
@@ -683,15 +670,22 @@ def add_physical_scores(frame: pd.DataFrame) -> pd.DataFrame:
                 if b1_score is not None:
                     result.at[position, f"p_{side}_b1_raw_score_h10"] = b1_score
             path_eligible = bool(
-                current.get("q_horizon_status_h10") == "OK"
-                and current.get("q_horizon_status_h20") == "OK"
-                and current.get("state_status") == "OK"
+                current.get("q_horizon_status_h10") == "OK" and current.get("state_status") == "OK"
             )
             exact_training = training.loc[
-                training["q_horizon_status_h10"].eq("OK")
-                & training["q_horizon_status_h20"].eq("OK")
-                & training["state_status"].eq("OK")
+                training["q_horizon_status_h10"].eq("OK") & training["state_status"].eq("OK")
             ].copy()
+            exact_labels = exact_training[label].dropna().astype(bool)
+            exact_positives = int(exact_labels.sum())
+            exact_negatives = int(len(exact_labels) - exact_positives)
+            horizon_input_ready = bool(calendar_opportunity and path_eligible)
+            result.at[position, f"{side}_path_horizon_input_ready"] = horizon_input_ready
+            result.at[position, f"{side}_path_opportunity"] = bool(
+                horizon_input_ready
+                and len(exact_training) >= 252
+                and exact_positives >= 20
+                and exact_negatives >= 20
+            )
             if path_eligible:
                 c2_score, status = _logistic_score(
                     exact_training,
@@ -752,11 +746,20 @@ def _qlike(actual: np.ndarray, forecast: np.ndarray) -> np.ndarray:
 
 
 def evaluate_variance_gate(frame: pd.DataFrame) -> dict[str, Any]:
+    calendar_opportunities = frame.loc[frame["variance_calendar_opportunity"].astype(bool)].copy()
+    horizon_input_ready = calendar_opportunities.loc[
+        calendar_opportunities["variance_horizon_input_ready"].astype(bool)
+    ].copy()
     opportunities = frame.loc[frame["variance_opportunity"].astype(bool)].copy()
     eligible = opportunities.loc[
         pd.to_numeric(opportunities["p_c2_variance_h20"], errors="coerce").notna()
     ].copy()
     coverage = len(eligible) / len(opportunities) if len(opportunities) else 0.0
+    input_availability = (
+        len(horizon_input_ready) / len(calendar_opportunities)
+        if len(calendar_opportunities)
+        else 0.0
+    )
     paired_fields = (
         "rv_variance_h20",
         "p_c2_variance_h20",
@@ -770,6 +773,9 @@ def evaluate_variance_gate(frame: pd.DataFrame) -> dict[str, Any]:
         return {
             "verdict": "INSUFFICIENT_EVIDENCE",
             "reason": "VARIANCE_PAIRED_ROWS_BELOW_126",
+            "calendar_opportunity_rows": len(calendar_opportunities),
+            "horizon_input_ready_rows": len(horizon_input_ready),
+            "raw_horizon_input_availability": input_availability,
             "opportunity_rows": len(opportunities),
             "eligible_rows": len(eligible),
             "paired_rows": len(paired),
@@ -814,9 +820,10 @@ def evaluate_variance_gate(frame: pd.DataFrame) -> dict[str, Any]:
     )
     return {
         "verdict": "PASS" if passed else "FAIL",
-        "reason": "FROZEN_VARIANCE_GATES_PASSED"
-        if passed
-        else "FROZEN_VARIANCE_GATE_FAILED",
+        "reason": "FROZEN_VARIANCE_GATES_PASSED" if passed else "FROZEN_VARIANCE_GATE_FAILED",
+        "calendar_opportunity_rows": len(calendar_opportunities),
+        "horizon_input_ready_rows": len(horizon_input_ready),
+        "raw_horizon_input_availability": input_availability,
         "opportunity_rows": len(opportunities),
         "eligible_rows": len(eligible),
         "paired_rows": len(paired),
@@ -866,10 +873,21 @@ def _capture_counts(frame: pd.DataFrame, *, side: str) -> tuple[int, int]:
 def evaluate_path_gate(frame: pd.DataFrame, *, side: str) -> dict[str, Any]:
     label = f"{side}side_path_breach_h10"
     raw = f"p_{side}_c2_raw_score_h10"
+    calendar_field = f"{side}_path_calendar_opportunity"
+    input_ready_field = f"{side}_path_horizon_input_ready"
     opportunity_field = f"{side}_path_opportunity"
+    calendar_opportunities = frame.loc[frame[calendar_field].astype(bool)].copy()
+    horizon_input_ready = calendar_opportunities.loc[
+        calendar_opportunities[input_ready_field].astype(bool)
+    ].copy()
     opportunities = frame.loc[frame[opportunity_field].astype(bool)].copy()
     paired = opportunities.loc[pd.to_numeric(opportunities[raw], errors="coerce").notna()].copy()
     coverage = len(paired) / len(opportunities) if len(opportunities) else 0.0
+    input_availability = (
+        len(horizon_input_ready) / len(calendar_opportunities)
+        if len(calendar_opportunities)
+        else 0.0
+    )
     positives = int(opportunities[label].fillna(False).astype(bool).sum())
     negatives = int(len(opportunities) - positives)
     if len(paired) < 126 or positives < 20 or negatives < 20:
@@ -877,6 +895,9 @@ def evaluate_path_gate(frame: pd.DataFrame, *, side: str) -> dict[str, Any]:
             "verdict": "INSUFFICIENT_EVIDENCE",
             "reason": "PATH_SAMPLE_GATE_NOT_MET",
             "side": side,
+            "calendar_opportunity_rows": len(calendar_opportunities),
+            "horizon_input_ready_rows": len(horizon_input_ready),
+            "raw_horizon_input_availability": input_availability,
             "opportunity_rows": len(opportunities),
             "eligible_rows": len(paired),
             "eligible_coverage": coverage,
@@ -901,9 +922,7 @@ def evaluate_path_gate(frame: pd.DataFrame, *, side: str) -> dict[str, Any]:
         )
         if value is not None:
             spearman_samples.append(value)
-    spearman_lower = (
-        float(np.quantile(spearman_samples, 0.05)) if spearman_samples else None
-    )
+    spearman_lower = float(np.quantile(spearman_samples, 0.05)) if spearman_samples else None
 
     capture_rng = np.random.default_rng(2026082302 if side == "up" else 2026082303)
     lift_samples: list[float] = []
@@ -949,6 +968,9 @@ def evaluate_path_gate(frame: pd.DataFrame, *, side: str) -> dict[str, Any]:
         "verdict": "PASS" if passed else "FAIL",
         "reason": "FROZEN_PATH_GATES_PASSED" if passed else "FROZEN_PATH_GATE_FAILED",
         "side": side,
+        "calendar_opportunity_rows": len(calendar_opportunities),
+        "horizon_input_ready_rows": len(horizon_input_ready),
+        "raw_horizon_input_availability": input_availability,
         "opportunity_rows": len(opportunities),
         "eligible_rows": len(paired),
         "eligible_coverage": coverage,
@@ -1086,9 +1108,7 @@ def _engineering_gate(frame: pd.DataFrame, q: pd.DataFrame) -> dict[str, Any]:
     )
     return {
         "verdict": "PASS" if passed else "FAIL",
-        "reason": "LOCAL_ENGINEERING_GATES_PASSED"
-        if passed
-        else "LOCAL_ENGINEERING_GATE_FAILED",
+        "reason": "LOCAL_ENGINEERING_GATES_PASSED" if passed else "LOCAL_ENGINEERING_GATE_FAILED",
         "local_carrier_only": local_only,
         "market_breadth_not_applicable": breadth_na,
         "primary_phase_not_applicable": phase_na,
@@ -1216,9 +1236,7 @@ def build_extended_local_inputs(
             "data_status",
         ]
     ].copy()
-    local_options = option_prices.loc[
-        option_prices["carrier_id"].astype(str).eq(CARRIER_ID)
-    ].copy()
+    local_options = option_prices.loc[option_prices["carrier_id"].astype(str).eq(CARRIER_ID)].copy()
     local_marks = etf_marks.loc[etf_marks["carrier_id"].astype(str).eq(CARRIER_ID)].copy()
     surface_rows, surfaces = _surface_rows(
         local_options,
@@ -1241,9 +1259,9 @@ def build_extended_local_inputs(
         q.sort_values(["forecast_session", "horizon_sessions"], kind="stable").reset_index(
             drop=True
         ),
-        outcomes.sort_values(
-            ["forecast_session", "horizon_sessions"], kind="stable"
-        ).reset_index(drop=True),
+        outcomes.sort_values(["forecast_session", "horizon_sessions"], kind="stable").reset_index(
+            drop=True
+        ),
     )
 
 
@@ -1278,9 +1296,7 @@ def run_v2_2_local_build(*, project_dir: Path, aetf_root: Path) -> V22LocalArtif
     processed = project / "data/processed/v2_2"
     output = project / "outputs/v2_2_local"
     q_path = write_parquet(q, processed / "csi300_local_q_ledger.parquet")
-    outcome_path = write_parquet(
-        outcomes, processed / "csi300_local_outcome_ledger.parquet"
-    )
+    outcome_path = write_parquet(outcomes, processed / "csi300_local_outcome_ledger.parquet")
     ledger_path = write_parquet(first_ledger, processed / "csi300_local_ledger.parquet")
     score = {
         **first_score,
