@@ -1,0 +1,68 @@
+{
+  "failure_ledger_version": "2.2.2",
+  "authority_sha256": "5f21d1f2842ae91a0a845324b3823302f33da54a39efa9ae847b7d40b20d056b",
+  "execution_git_sha": "34e8926dd6f27d34825df730ebb47735806723e3",
+  "carrier_scope": "CSI300_510300",
+  "development_era": ["2020-01-02", "2026-06-05"],
+  "development_verdict": "INSUFFICIENT_EVIDENCE",
+  "top_level_status": "V2_2_LOCAL_RESEARCH_BUILT",
+  "stop_layer": "H5_PHYSICAL_FORECAST_ACCEPTANCE",
+  "stop_reason": "C2_EVALUATION_SAMPLE_BELOW_126",
+  "sample_evidence": {
+    "forecast_sessions": 1555,
+    "h10_exact_q_rows": 431,
+    "h20_exact_q_rows": 1099,
+    "h10_h20_joint_exact_rows": 430,
+    "complete_state_rows": 1017,
+    "joint_exact_complete_state_rows": 319,
+    "maximum_causal_variance_training_rows": 313,
+    "maximum_causal_path_training_rows": 319,
+    "frozen_minimum_training_rows": 252
+  },
+  "dimensions": [
+    {"dimension": "ENGINEERING", "verdict": "PASS"},
+    {
+      "dimension": "P_VARIANCE_H20",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "VARIANCE_PAIRED_ROWS_BELOW_126",
+      "opportunity_rows": 1263,
+      "eligible_rows": 58,
+      "eligible_coverage": 0.04592240696753761
+    },
+    {
+      "dimension": "P_UP_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET",
+      "opportunity_rows": 176,
+      "eligible_rows": 64,
+      "eligible_coverage": 0.36363636363636365,
+      "positives": 27,
+      "negatives": 149
+    },
+    {
+      "dimension": "P_DOWN_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET",
+      "opportunity_rows": 176,
+      "eligible_rows": 64,
+      "eligible_coverage": 0.36363636363636365,
+      "positives": 25,
+      "negatives": 151
+    },
+    {
+      "dimension": "Q_MINUS_P_H20",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "P_VARIANCE_GATE_NOT_PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "data/processed/v2_2/csi300_local_q_ledger.parquet": "939a3ade52eda96abd1ebacac9be45bd72124702a36fd733ed7c9573c9dd8c94",
+    "data/processed/v2_2/csi300_local_outcome_ledger.parquet": "6285142b36b9e7530ded6cb3a5f0eb93447fe81c0b6450052bee0b300559d88a",
+    "data/processed/v2_2/csi300_local_ledger.parquet": "5bcd5ba0ae99e12c7b50f32112e02d58c65d64619ba5de9316c97cd5917073d1",
+    "outputs/v2_2_local/development_score.json": "1cc7c7fdf23d79b88fa3917c042892037d2955642619d58ece17eaa96e89e053",
+    "outputs/v2_2_local/failure_ledger.json": "e45dc266ea22a9549e234421e00479b31a386d5ef85aa12f93288f5053a39382"
+  },
+  "deterministic_replay": true,
+  "strategy_inputs_used": false,
+  "forward_acceptance_executed": false
+}
