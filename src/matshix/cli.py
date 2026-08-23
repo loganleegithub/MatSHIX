@@ -13,6 +13,7 @@ from matshix.data.aetf import AetfPaths, source_summary
 from matshix.pipeline import build_research_project
 from matshix.research.shortvol import run_shortvol_backtest
 from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
+from matshix.research.weather_v2_audit import run_weather_v2_business_audit
 from matshix.serialization import write_json
 from matshix.validation import verify_research_outputs
 
@@ -124,6 +125,28 @@ def accept_real_research(
     _emit(payload)
     if not result.passed:
         raise typer.Exit(code=1)
+
+
+@app.command("audit-weather-v2")
+def audit_weather_v2(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+) -> None:
+    """Run the strategy-blind Stage A business audit against the frozen V1 baseline."""
+
+    artifacts = run_weather_v2_business_audit(project_dir=project_dir, aetf_root=aetf_root)
+    _emit(
+        {
+            "audit_status": artifacts.summary["audit_status"],
+            "daily": str(artifacts.daily_path),
+            "summary": str(artifacts.summary_path),
+            "audit": str(artifacts.audit_path),
+            "defect_counts": artifacts.summary["defect_counts"],
+            "semantic_implementation_started": False,
+        }
+    )
 
 
 @app.command("backtest-510300-shortvol")
