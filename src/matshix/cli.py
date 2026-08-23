@@ -195,7 +195,7 @@ def build_v2_q(
     artifacts = run_v2_q_build(
         project_dir=project_dir,
         aetf_root=aetf_root,
-        progress=lambda message: typer.echo(f"[MatSHIX V2 Q] {message}", err=True),
+        progress=lambda message: typer.echo(f"[MatSHIX V2.1.1 Q] {message}", err=True),
     )
     _emit(
         {

@@ -27,6 +27,16 @@ def surface_cutoff(session_date: str | date | pd.Timestamp) -> datetime:
     return datetime.combine(session, time(14, 56, 59), tzinfo=SHANGHAI)
 
 
+def settlement_observation_time(session_date: str | date | pd.Timestamp) -> datetime:
+    session = pd.Timestamp(session_date).date()
+    return datetime.combine(session, time(15, 0), tzinfo=SHANGHAI)
+
+
+def settlement_known_at(session_date: str | date | pd.Timestamp) -> datetime:
+    session = pd.Timestamp(session_date).date()
+    return datetime.combine(session, time(23, 59, 59), tzinfo=SHANGHAI)
+
+
 def research_bar_time(session_date: str | date | pd.Timestamp) -> datetime:
     session = pd.Timestamp(session_date).date()
     return datetime.combine(session, time(14, 56), tzinfo=SHANGHAI)

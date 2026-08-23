@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from matshix.calendar import exchange_sessions_in_range
-from matshix.v2.authority import EXPECTED_LISTING_DATES, coverage_regime
+from matshix.calendar import exchange_sessions_in_range, settlement_known_at
+from matshix.v2.authority import EXPECTED_LISTING_DATES, coverage_regime, verify_authority_chain
 from matshix.v2.outcomes import (
     AFTERNOON_ENDPOINTS,
     EXPECTED_INTRADAY_RETURNS,
@@ -95,6 +96,8 @@ def test_outcome_window_is_exchange_session_based_and_mirrors_path() -> None:
     expected = exchange_sessions_in_range("2023-06-06", "2023-06-12")
     assert h5["target_start_session"] == expected[0]
     assert h5["target_end_session"] == expected[-1]
+    assert h5["input_known_at"] == settlement_known_at(forecasts[0])
+    assert h5["forecast_mark_kind"] == "ETF_ADJUSTED_CLOSE_1500"
     assert h5["max_up_log_move_h"] >= 0
     assert h5["max_down_log_move_h"] >= 0
     assert pd.isna(h5["upside_path_breach_h"])
@@ -164,6 +167,35 @@ def test_data_after_target_end_cannot_change_frozen_outcome() -> None:
     assert frozen[0][fields].to_dict() == frozen[1][fields].to_dict()
 
 
+def test_1456_mark_cannot_change_v21_path_based_on_1500_close() -> None:
+    sessions = exchange_sessions_in_range("2023-05-31", "2023-07-14")
+    forecast = pd.Timestamp("2023-06-05")
+    variants: list[pd.Series] = []
+    for replacement in (0.25, 4.0):
+        rows: list[dict[str, object]] = []
+        for session in sessions:
+            day = _minute_day(session, "SSE50_510050", start_mark=1.0, step=0.0002)
+            if session == forecast:
+                for row in day:
+                    if row["time"] == "14:56:00":
+                        row["adjusted_mark"] = replacement
+            rows.extend(day)
+        daily, paths = build_daily_realized_inputs(pd.DataFrame(rows))
+        ledger, _ = build_realized_outcome_ledger(
+            daily,
+            paths,
+            forecast_sessions=pd.DatetimeIndex([forecast]),
+            listing_dates=EXPECTED_LISTING_DATES,
+        )
+        variants.append(
+            ledger.loc[
+                ledger["carrier_id"].eq("SSE50_510050") & ledger["horizon_sessions"].eq(5)
+            ].iloc[0]
+        )
+    fields = ["max_up_log_move_h", "max_down_log_move_h", "close_to_close_return_h"]
+    assert variants[0][fields].to_dict() == variants[1][fields].to_dict()
+
+
 def test_date_and_overlap_clusters_are_deterministic() -> None:
     all_sessions = exchange_sessions_in_range("2023-05-31", "2023-07-31")
     rows: list[dict[str, object]] = []
@@ -214,3 +246,10 @@ def test_not_listed_and_incomplete_tail_are_not_zero() -> None:
 def test_authority_era_transition_is_exact() -> None:
     assert coverage_regime("2023-06-04") == "ERA_C_50_300_500"
     assert coverage_regime("2023-06-05") == "ERA_D_FOUR_CARRIERS"
+
+
+def test_v211_authority_chain_matches_frozen_bytes() -> None:
+    project = Path(__file__).resolve().parents[1]
+    verified = verify_authority_chain(project)
+    assert verified["MATSHIX_V2_1_1_AUTHORITY.md"]["status"] == "VERIFIED"
+    assert verified["MATSHIX_V2_CONSTRUCTION_PLAN.md"]["status"] == "VERIFIED"

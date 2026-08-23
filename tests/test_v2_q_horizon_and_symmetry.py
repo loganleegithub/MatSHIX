@@ -115,6 +115,7 @@ def _q_frame(*, robust: bool, rows: int = 140) -> pd.DataFrame:
 def test_frozen_q_robustness_gate_passes_only_with_required_pair_count() -> None:
     result = evaluate_q_robustness(_q_frame(robust=False), _q_frame(robust=True))
     assert result["verdict"] == "PASS"
+    assert result["median_signed_relative_delta_block_ci90"] == pytest.approx([0.01, 0.01])
     short = evaluate_q_robustness(_q_frame(robust=False, rows=100), _q_frame(robust=True, rows=100))
     assert short["verdict"] == "INSUFFICIENT_EVIDENCE"
 

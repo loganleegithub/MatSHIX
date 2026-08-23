@@ -15,24 +15,33 @@ from matshix.calendar import (
     add_exchange_sessions,
     exchange_decision_as_of,
     exchange_sessions_in_range,
-    surface_cutoff,
+    settlement_known_at,
+    settlement_observation_time,
 )
 from matshix.constants import CARRIER_TO_INDEX, CARRIER_TO_UNDERLYING
 from matshix.data.aetf import AetfPaths, contract_master
 from matshix.serialization import canonical_json_bytes, file_hash, write_json
 from matshix.storage import write_parquet
 from matshix.v2.authority import (
+    AUTHORITY_DOCUMENT,
+    AUTHORITY_SHA256,
     AUTHORITY_VERSION,
+    CONSTRUCTION_PLAN_SHA256,
     ERA_DEFINITION_VERSION,
     ERA_REGISTRY,
     EXPECTED_LISTING_DATES,
     HORIZONS,
     OUTCOME_DEFINITION_VERSION,
+    PARENT_ADJUDICATION_SHA256,
+    PARENT_AUTHORITY_SHA256,
+    ROOT_V2_AUTHORITY_SHA256,
     SAMPLING_GRID_VERSION,
     available_carrier_count,
     carrier_is_listed,
     coverage_regime,
+    verify_authority_chain,
 )
+from matshix.v2.provenance import repository_provenance, runtime_provenance
 
 MORNING_ENDPOINTS = tuple(
     (pd.Timestamp("2000-01-01 09:30") + pd.Timedelta(minutes=5 * value)).strftime("%H:%M:%S")
@@ -189,7 +198,6 @@ def build_daily_realized_inputs(
             and overnight is not None
             and np.isfinite(overnight)
             and np.isfinite(factor)
-            and "14:56:00" in marks
             and "15:00:00" in marks
         )
         issues: list[str] = []
@@ -199,8 +207,6 @@ def build_daily_realized_inputs(
             issues.append("MISSING_OVERNIGHT_INPUT")
         if not np.isfinite(factor):
             issues.append("INVALID_ADJ_FACTOR")
-        if "14:56:00" not in marks:
-            issues.append("MISSING_1456_MARK")
         if "15:00:00" not in marks:
             issues.append("MISSING_1500_MARK")
         intraday_variance = (
@@ -313,7 +319,9 @@ def build_realized_outcome_ledger(
                 target_end = target_dates[-1]
                 common = {
                     "forecast_session": forecast_session,
-                    "input_known_at": surface_cutoff(forecast_session),
+                    "forecast_mark_time": settlement_observation_time(forecast_session),
+                    "forecast_mark_kind": "ETF_ADJUSTED_CLOSE_1500",
+                    "input_known_at": settlement_known_at(forecast_session),
                     "consumer_decision_as_of": exchange_decision_as_of(forecast_session),
                     "target_start_session": target_start,
                     "target_end_session": target_end,
@@ -337,7 +345,7 @@ def build_realized_outcome_ledger(
                 reason: str | None = None
                 if not listed:
                     reason = "NOT_LISTED"
-                elif base is None or base.get("mark_1456") is None:
+                elif base is None or base.get("mark_1500") is None:
                     reason = "MISSING_FORECAST_MARK"
                 target_rows = [by_key.get((carrier, value)) for value in target_dates]
                 if reason is None and (
@@ -401,7 +409,7 @@ def build_realized_outcome_ledger(
                 rv_overnight = 252.0 / horizon * overnight_sum
                 rv_variance = rv_intraday + rv_overnight
                 all_marks = np.concatenate(complete_paths)
-                frozen_mark = float(base["mark_1456"])
+                frozen_mark = float(base["mark_1500"])
                 moves = np.log(all_marks / frozen_mark)
                 factors = [str(value["corporate_action_status"]) for value in complete_rows]
                 row = {
@@ -467,7 +475,7 @@ def _render_handcheck(coverage: dict[str, Any], ledger: pd.DataFrame) -> str:
     observed = ledger.loc[ledger["label_status"].eq("OBSERVED")]
     example = observed.sort_values(["forecast_session", "carrier_id", "horizon_sessions"]).iloc[0]
     lines = [
-        "# MatSHIX V2 H1/H2 handcheck",
+        "# MatSHIX V2.1.1 H1/H2 handcheck",
         "",
         f"- Authority: `{AUTHORITY_VERSION}`",
         f"- Outcome definition: `{OUTCOME_DEFINITION_VERSION}`",
@@ -483,6 +491,7 @@ def _render_handcheck(coverage: dict[str, Any], ledger: pd.DataFrame) -> str:
         "`rv_variance_h = (252/H) * sum(daily_total_variance)`",
         "",
         "午休只用一次 `11:30 -> 13:05` return；不 forward-fill，不生成伪 0。",
+        "Path outcome 以 forecast t 的复权 ETF 15:00 mark 为冻结基准。",
         "",
         "## First complete real row",
         "",
@@ -532,6 +541,7 @@ def run_v2_outcome_build(
     end: str | None = None,
 ) -> V2OutcomeArtifacts:
     project = project_dir.expanduser().resolve()
+    authority_chain = verify_authority_chain(project)
     paths = AetfPaths.from_root(aetf_root)
     manifest = json.loads(
         (project / "outputs/v2_baseline/v1_manifest.json").read_text(encoding="utf-8")
@@ -558,8 +568,8 @@ def run_v2_outcome_build(
         forecast_sessions=forecast_sessions,
         listing_dates=listing_dates,
     )
-    processed = project / "data/processed/v2"
-    output = project / "outputs/v2_outcomes"
+    processed = project / "data/processed/v2_1"
+    output = project / "outputs/v2_1_outcomes"
     era_path = write_parquet(era_registry, processed / "era_registry.parquet")
     ledger_path = write_parquet(ledger, processed / "realized_outcome_ledger.parquet")
     issue_path = write_parquet(issues, processed / "outcome_issue_ledger.parquet")
@@ -601,9 +611,23 @@ def run_v2_outcome_build(
         and action_pass
     )
     coverage: dict[str, Any] = {
+        "authority_document": AUTHORITY_DOCUMENT,
         "authority_version": AUTHORITY_VERSION,
+        "authority_sha256": AUTHORITY_SHA256,
+        "parent_authority_sha256": PARENT_AUTHORITY_SHA256,
+        "root_v2_authority_sha256": ROOT_V2_AUTHORITY_SHA256,
+        "parent_adjudication_sha256": PARENT_ADJUDICATION_SHA256,
+        "construction_plan_sha256": CONSTRUCTION_PLAN_SHA256,
+        "authority_chain": authority_chain,
         "outcome_definition_version": OUTCOME_DEFINITION_VERSION,
         "sampling_grid_version": SAMPLING_GRID_VERSION,
+        "repository": repository_provenance(project),
+        "runtime": runtime_provenance(),
+        "cohort": {
+            "kind": "FULL_RETROSPECTIVE_RECONSTRUCTION",
+            "start_session": start_session.date().isoformat(),
+            "end_session": end_session.date().isoformat(),
+        },
         "evidence_boundary": {
             "inputs": [
                 str(Path(aetf_root).expanduser().resolve() / "ETF/1m_etf"),
@@ -614,6 +638,17 @@ def run_v2_outcome_build(
             "weather_inputs_used": False,
             "strategy_inputs_used": False,
             "future_outcome_used_as_feature": False,
+        },
+        "inputs": {
+            "aetf_root": str(Path(aetf_root).expanduser().resolve()),
+            "etf_minute_glob": paths.etf_minutes,
+            "etf_daily_glob": paths.etf_daily,
+            "option_contracts": str(paths.option_contracts),
+            "option_contracts_sha256": file_hash(paths.option_contracts),
+            "aetf_readme": str(paths.readme),
+            "aetf_readme_sha256": file_hash(paths.readme),
+            "v1_manifest": "outputs/v2_baseline/v1_manifest.json",
+            "v1_manifest_sha256": file_hash(project / "outputs/v2_baseline/v1_manifest.json"),
         },
         "source_range": [start_session.date().isoformat(), end_session.date().isoformat()],
         "forecast_sessions": len(forecast_sessions),

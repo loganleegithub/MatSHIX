@@ -259,6 +259,146 @@ def extract_history(
     )
 
 
+def extract_settlement_history(
+    paths: AetfPaths,
+    *,
+    start: str | None = None,
+    end: str | None = None,
+) -> AetfExtraction:
+    """Extract provider-reconstructed option settlement and ETF 15:00 marks."""
+
+    paths.validate()
+    start_value = "00000000" if start is None else pd.Timestamp(start).strftime("%Y%m%d")
+    end_value = "99999999" if end is None else pd.Timestamp(end).strftime("%Y%m%d")
+    option_codes = tuple(CARRIER_TO_OPTION_CODE.values())
+    underlyings = tuple(CARRIER_TO_UNDERLYING.values())
+    connection = _connection()
+    try:
+        option_prices = connection.execute(
+            """
+            WITH contracts AS (
+                SELECT
+                    code AS contract_id,
+                    opt_code AS option_underlying_code,
+                    call_put AS option_type,
+                    exercise_price AS strike,
+                    maturity_date AS expiry,
+                    coalesce(per_unit, opt_multiplier) AS contract_unit,
+                    symbol,
+                    list_date,
+                    delist_date,
+                    CASE
+                        WHEN per_unit = 10000
+                         AND opt_multiplier = 10000
+                         AND symbol NOT LIKE '%A%'
+                        THEN true ELSE false
+                    END AS is_standard
+                FROM read_parquet(?)
+                WHERE opt_code IN (?, ?, ?, ?)
+            )
+            SELECT
+                d.date AS session_date,
+                d.code AS contract_id,
+                c.option_underlying_code,
+                c.option_type,
+                c.strike,
+                c.expiry,
+                c.contract_unit,
+                c.is_standard,
+                d.settle AS price,
+                d.close AS daily_close,
+                d.vol AS daily_volume,
+                d.amount AS daily_amount,
+                d.oi AS open_interest
+            FROM read_parquet(?, union_by_name=true) AS d
+            JOIN contracts AS c ON c.contract_id = d.code
+            WHERE d.date BETWEEN ? AND ?
+              AND c.list_date <= d.date
+              AND c.delist_date >= d.date
+              AND isfinite(d.settle)
+              AND d.settle > 0
+            """,
+            [
+                str(paths.option_contracts),
+                *option_codes,
+                paths.option_daily,
+                start_value,
+                end_value,
+            ],
+        ).fetchdf()
+        etf_marks = connection.execute(
+            """
+            WITH daily AS (
+                SELECT code, date, adj_factor
+                FROM read_parquet(?, union_by_name=true)
+                WHERE date BETWEEN ? AND ?
+                  AND code IN (?, ?, ?, ?)
+            )
+            SELECT
+                m.date AS session_date,
+                m.code AS underlying_symbol,
+                m.close AS etf_mark,
+                d.adj_factor,
+                m.close * d.adj_factor AS tr_mark
+            FROM read_parquet(?, union_by_name=true) AS m
+            JOIN daily AS d ON d.code = m.code AND d.date = m.date
+            WHERE m.date BETWEEN ? AND ?
+              AND m.code IN (?, ?, ?, ?)
+              AND substr(m.trade_time, 12, 8) = '15:00:00'
+            """,
+            [
+                paths.etf_daily,
+                start_value,
+                end_value,
+                *underlyings,
+                paths.etf_minutes,
+                start_value,
+                end_value,
+                *underlyings,
+            ],
+        ).fetchdf()
+    finally:
+        connection.close()
+    reverse_codes = {value: key for key, value in CARRIER_TO_OPTION_CODE.items()}
+    option_prices["carrier_id"] = option_prices["option_underlying_code"].map(reverse_codes)
+    option_prices["economic_index_id"] = option_prices["carrier_id"].map(CARRIER_TO_INDEX)
+    if option_prices["option_underlying_code"].isin(EXCLUDED_OPTION_CODES).any():
+        raise AssertionError("excluded 588080 option entered the settlement panel")
+    reverse_underlyings = {value: key for key, value in CARRIER_TO_UNDERLYING.items()}
+    etf_marks["carrier_id"] = etf_marks["underlying_symbol"].map(reverse_underlyings)
+    etf_marks["economic_index_id"] = etf_marks["carrier_id"].map(CARRIER_TO_INDEX)
+    for frame in (option_prices, etf_marks):
+        frame["session_date"] = pd.to_datetime(frame["session_date"].astype(str), format="%Y%m%d")
+    option_prices["expiry"] = pd.to_datetime(option_prices["expiry"].astype(str), format="%Y%m%d")
+    common_sessions = sorted(
+        set(option_prices["session_date"]).intersection(etf_marks["session_date"])
+    )
+    if not common_sessions:
+        raise ValueError("AETF settlement extraction has no common option/ETF sessions")
+    option_prices = option_prices.loc[option_prices["session_date"].isin(common_sessions)].copy()
+    etf_marks = etf_marks.loc[etf_marks["session_date"].isin(common_sessions)].copy()
+    actual_indices = set(option_prices["economic_index_id"].dropna().astype(str))
+    if actual_indices != set(CARRIER_TO_INDEX.values()):
+        raise ValueError(f"four-carrier settlement extraction incomplete: {sorted(actual_indices)}")
+    option_prices["evidence_tier"] = "RESEARCH_ONLY"
+    option_prices["vintage_kind"] = "PROVIDER_RECONSTRUCTED"
+    option_prices["licence_scope"] = "LOCAL_RESEARCH_RIGHTS_UNVERIFIED"
+    etf_marks["evidence_tier"] = "RESEARCH_ONLY"
+    etf_marks["vintage_kind"] = "PROVIDER_RECONSTRUCTED"
+    etf_marks["licence_scope"] = "LOCAL_RESEARCH_RIGHTS_UNVERIFIED"
+    return AetfExtraction(
+        option_prices=option_prices.sort_values(
+            ["session_date", "carrier_id", "expiry", "strike", "option_type"], kind="stable"
+        ).reset_index(drop=True),
+        etf_marks=etf_marks.sort_values(["session_date", "carrier_id"], kind="stable").reset_index(
+            drop=True
+        ),
+        start_session=pd.Timestamp(common_sessions[0]).date().isoformat(),
+        end_session=pd.Timestamp(common_sessions[-1]).date().isoformat(),
+        session_count=len(common_sessions),
+    )
+
+
 def source_summary(paths: AetfPaths) -> dict[str, Any]:
     paths.validate()
     contracts = contract_master(paths)

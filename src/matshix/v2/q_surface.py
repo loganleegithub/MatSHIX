@@ -3,26 +3,45 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import numpy as np
 import pandas as pd
 
-from matshix.calendar import expiry_timestamp, surface_cutoff, year_fraction_act365f
+from matshix.calendar import (
+    expiry_timestamp,
+    settlement_known_at,
+    settlement_observation_time,
+    surface_cutoff,
+    year_fraction_act365f,
+)
 from matshix.constants import (
     CARRIER_TO_INDEX,
-    CARRIER_TO_OPTION_CODE,
-    EXCLUDED_OPTION_CODES,
 )
-from matshix.data.aetf import AetfPaths, extract_history
+from matshix.data.aetf import AetfPaths, extract_history, extract_settlement_history
 from matshix.serialization import file_hash, write_json
 from matshix.storage import write_parquet
 from matshix.surface.research import ResearchCarrierSurface, build_carrier_surface
-from matshix.v2.authority import AUTHORITY_VERSION, OUTCOME_DEFINITION_VERSION, Q_DEFINITION_VERSION
+from matshix.v2.authority import (
+    AUTHORITY_DOCUMENT,
+    AUTHORITY_SHA256,
+    AUTHORITY_VERSION,
+    CONFIRMATION_END,
+    CONFIRMATION_START,
+    CONSTRUCTION_PLAN_SHA256,
+    OUTCOME_DEFINITION_VERSION,
+    PARENT_ADJUDICATION_SHA256,
+    PARENT_AUTHORITY_SHA256,
+    Q_DEFINITION_VERSION,
+    ROOT_V2_AUTHORITY_SHA256,
+    verify_authority_chain,
+)
+from matshix.v2.provenance import repository_provenance, runtime_provenance
 
 Progress = Callable[[str], None]
+ObservationTime = Callable[[pd.Timestamp], datetime]
 
 
 @dataclass(frozen=True)
@@ -155,6 +174,8 @@ def _surface_rows(
     etf_marks: pd.DataFrame,
     *,
     price_proxy: str,
+    observation_time: ObservationTime = surface_cutoff,
+    methodology_version: str = "MATSHIX_RESEARCH_MINUTE_CLOSE_V2",
     progress: Progress | None,
 ) -> tuple[pd.DataFrame, dict[tuple[pd.Timestamp, str], ResearchCarrierSurface]]:
     spots = {
@@ -176,7 +197,8 @@ def _surface_rows(
             carrier_id=carrier_id,
             economic_index_id=CARRIER_TO_INDEX[carrier_id],
             spot=spot,
-            observation_time=surface_cutoff(session_value),
+            observation_time=observation_time(session_value),
+            methodology_version=methodology_version,
         )
         built[(session_value, carrier_id)] = surface
         records.append(
@@ -190,11 +212,21 @@ def _surface_rows(
                 "eligible_contracts": surface.eligible_contracts,
                 "iv30_mf": surface.iv30_mf,
                 "iv30_method": surface.iv30_method,
+                "iv60_mf": surface.iv60_mf,
+                "iv60_method": surface.iv60_method,
+                "iv90_mf": surface.iv90_mf,
+                "iv90_method": surface.iv90_method,
+                "fvar_30_90": surface.fvar_30_90,
+                "fvol_30_90": surface.fvol_30_90,
+                "term_log_ratio_30_90": surface.term_log_ratio_30_90,
                 "atm_iv30": surface.atm_iv30,
                 "iv_25d_put30": surface.iv_25d_put30,
                 "iv_25d_call30": surface.iv_25d_call30,
+                "rr25": surface.rr25,
                 "down_skew25": surface.down_skew25,
                 "up_skew25": surface.up_skew25,
+                "bf25": surface.bf25,
+                "wing_variance_spread": surface.wing_variance_spread,
                 "wing_dominance": wing_dominance(surface.down_skew25, surface.up_skew25),
                 "issues": "|".join(surface.issues),
             }
@@ -202,117 +234,6 @@ def _surface_rows(
         if progress is not None and (index % 250 == 0 or index == len(groups)):
             progress(f"{price_proxy}: built {index}/{len(groups)} carrier sessions")
     return pd.DataFrame(records), built
-
-
-def _extract_near_close_vwap(paths: AetfPaths, *, start: str, end: str) -> pd.DataFrame:
-    paths.validate()
-    option_codes = tuple(CARRIER_TO_OPTION_CODE.values())
-    connection = duckdb.connect()
-    connection.execute("SET threads TO 4")
-    connection.execute("SET preserve_insertion_order TO false")
-    try:
-        frame = connection.execute(
-            """
-            WITH contracts AS (
-                SELECT
-                    code AS contract_id,
-                    opt_code AS option_underlying_code,
-                    call_put AS option_type,
-                    exercise_price AS strike,
-                    maturity_date AS expiry,
-                    coalesce(per_unit, opt_multiplier) AS contract_unit,
-                    symbol,
-                    list_date,
-                    delist_date,
-                    CASE
-                        WHEN per_unit = 10000
-                         AND opt_multiplier = 10000
-                         AND symbol NOT LIKE '%A%'
-                        THEN true ELSE false
-                    END AS is_standard
-                FROM read_parquet(?)
-                WHERE opt_code IN (?, ?, ?, ?)
-            ), daily AS (
-                SELECT code, date, vol, amount, oi
-                FROM read_parquet(?, union_by_name=true)
-                WHERE date BETWEEN ? AND ?
-            ), near_close AS (
-                SELECT
-                    m.code,
-                    m.date,
-                    sum(CASE WHEN m.vol > 0 AND m.amount > 0 THEN m.vol ELSE 0 END)
-                        AS window_volume,
-                    sum(CASE WHEN m.vol > 0 AND m.amount > 0 THEN m.amount ELSE 0 END)
-                        AS window_amount,
-                    min(CASE WHEN m.vol > 0 AND m.amount > 0 THEN m.low ELSE NULL END)
-                        AS window_low,
-                    max(CASE WHEN m.vol > 0 AND m.amount > 0 THEN m.high ELSE NULL END)
-                        AS window_high
-                FROM read_parquet(?, union_by_name=true) AS m
-                WHERE m.date BETWEEN ? AND ?
-                  AND substr(m.trade_time, 12, 8) BETWEEN '14:52:00' AND '14:56:59'
-                GROUP BY m.code, m.date
-            )
-            SELECT
-                w.date AS session_date,
-                w.code AS contract_id,
-                c.option_underlying_code,
-                c.option_type,
-                c.strike,
-                c.expiry,
-                c.contract_unit,
-                c.is_standard,
-                w.window_volume,
-                w.window_amount,
-                w.window_low,
-                w.window_high,
-                coalesce(d.vol, 0) AS daily_volume,
-                coalesce(d.amount, 0) AS daily_amount,
-                coalesce(d.oi, 0) AS open_interest
-            FROM near_close AS w
-            JOIN contracts AS c ON c.contract_id = w.code
-            LEFT JOIN daily AS d ON d.code = w.code AND d.date = w.date
-            WHERE c.list_date <= w.date
-              AND c.delist_date >= w.date
-              AND w.window_volume > 0
-              AND w.window_amount > 0
-            """,
-            [
-                str(paths.option_contracts),
-                *option_codes,
-                paths.option_daily,
-                pd.Timestamp(start).strftime("%Y%m%d"),
-                pd.Timestamp(end).strftime("%Y%m%d"),
-                paths.option_minutes,
-                pd.Timestamp(start).strftime("%Y%m%d"),
-                pd.Timestamp(end).strftime("%Y%m%d"),
-            ],
-        ).fetchdf()
-    finally:
-        connection.close()
-    reverse = {value: key for key, value in CARRIER_TO_OPTION_CODE.items()}
-    frame["carrier_id"] = frame["option_underlying_code"].map(reverse)
-    frame["economic_index_id"] = frame["carrier_id"].map(CARRIER_TO_INDEX)
-    if frame["option_underlying_code"].isin(EXCLUDED_OPTION_CODES).any():
-        raise AssertionError("excluded 588080 option entered V2 Q robustness")
-    frame["session_date"] = pd.to_datetime(frame["session_date"].astype(str), format="%Y%m%d")
-    frame["expiry"] = pd.to_datetime(frame["expiry"].astype(str), format="%Y%m%d")
-    frame["price"] = pd.to_numeric(frame["window_amount"]) / (
-        pd.to_numeric(frame["window_volume"]) * pd.to_numeric(frame["contract_unit"])
-    )
-    consistent = (
-        np.isfinite(frame["price"])
-        & frame["price"].gt(0)
-        & frame["price"].ge(pd.to_numeric(frame["window_low"]) - 1e-12)
-        & frame["price"].le(pd.to_numeric(frame["window_high"]) + 1e-12)
-    )
-    return (
-        frame.loc[consistent]
-        .sort_values(
-            ["session_date", "carrier_id", "expiry", "strike", "option_type"], kind="stable"
-        )
-        .reset_index(drop=True)
-    )
 
 
 def _empty_q(status: str, target_year_fraction: float) -> ExactQResult:
@@ -339,6 +260,9 @@ def _build_q_ledger(
     surfaces: dict[tuple[pd.Timestamp, str], ResearchCarrierSurface],
     *,
     price_proxy: str,
+    observation_time: ObservationTime = surface_cutoff,
+    known_at: ObservationTime = surface_cutoff,
+    liquidity_status: str = "CLOSE_PROXY_NO_BID_ASK",
 ) -> pd.DataFrame:
     surface_by_key = {
         (pd.Timestamp(row["forecast_session"]), str(row["carrier_id"])): row
@@ -350,8 +274,9 @@ def _build_q_ledger(
         carrier = str(row["carrier_id"])
         surface = surfaces.get((session, carrier))
         base = surface_by_key.get((session, carrier), {})
+        observed_at = observation_time(session)
         target_yf = year_fraction_act365f(
-            surface_cutoff(session), expiry_timestamp(pd.Timestamp(row["target_end_session"]))
+            observed_at, expiry_timestamp(pd.Timestamp(row["target_end_session"]))
         )
         if row["data_status"] == "NOT_LISTED":
             result = _empty_q("NOT_LISTED", target_yf)
@@ -367,7 +292,8 @@ def _build_q_ledger(
                 "horizon_sessions": int(row["horizon_sessions"]),
                 "target_start_session": row["target_start_session"],
                 "target_end_session": row["target_end_session"],
-                "known_at": row["input_known_at"],
+                "observation_time": observed_at,
+                "known_at": known_at(session),
                 "coverage_regime": row["coverage_regime"],
                 "available_carrier_count": row["available_carrier_count"],
                 "listing_age_sessions": row["listing_age_sessions"],
@@ -378,15 +304,23 @@ def _build_q_ledger(
                 "eligible_contracts": base.get("eligible_contracts"),
                 "iv30_mf": base.get("iv30_mf"),
                 "iv30_method": base.get("iv30_method"),
+                "iv60_mf": base.get("iv60_mf"),
+                "iv60_method": base.get("iv60_method"),
+                "iv90_mf": base.get("iv90_mf"),
+                "iv90_method": base.get("iv90_method"),
+                "fvar_30_90": base.get("fvar_30_90"),
+                "fvol_30_90": base.get("fvol_30_90"),
+                "term_log_ratio_30_90": base.get("term_log_ratio_30_90"),
                 "atm_iv30": base.get("atm_iv30"),
                 "iv_25d_put30": base.get("iv_25d_put30"),
                 "iv_25d_call30": base.get("iv_25d_call30"),
+                "rr25": base.get("rr25"),
                 "down_skew25": base.get("down_skew25"),
                 "up_skew25": base.get("up_skew25"),
+                "bf25": base.get("bf25"),
+                "wing_variance_spread": base.get("wing_variance_spread"),
                 "wing_dominance": base.get("wing_dominance"),
-                "liquidity_status": "POSITIVE_WINDOW_TRADES"
-                if price_proxy == "NEAR_CLOSE_PRINT_VWAP_1452_1456"
-                else "CLOSE_PROXY_NO_BID_ASK",
+                "liquidity_status": liquidity_status,
                 "unit": "ANNUALIZED_VARIANCE_252",
                 "q_definition_version": Q_DEFINITION_VERSION,
                 "authority_version": AUTHORITY_VERSION,
@@ -399,61 +333,226 @@ def _build_q_ledger(
     )
 
 
-def evaluate_q_robustness(main: pd.DataFrame, robust: pd.DataFrame) -> dict[str, Any]:
+def _moving_date_block_median_ci(
+    frame: pd.DataFrame,
+    *,
+    block_length: int,
+    seed: int,
+    replicates: int,
+) -> tuple[float | None, float | None]:
+    if frame.empty:
+        return None, None
+    by_date = {
+        pd.Timestamp(session): pd.to_numeric(group["signed_relative_delta"]).to_numpy(dtype=float)
+        for session, group in frame.groupby("forecast_session", sort=True)
+    }
+    dates = sorted(by_date)
+    if len(dates) < block_length:
+        return None, None
+    starts = np.arange(0, len(dates) - block_length + 1)
+    generator = np.random.default_rng(seed)
+    medians = np.empty(replicates, dtype=float)
+    for replicate in range(replicates):
+        sampled_dates: list[pd.Timestamp] = []
+        while len(sampled_dates) < len(dates):
+            start = int(generator.choice(starts))
+            sampled_dates.extend(dates[start : start + block_length])
+        values = np.concatenate([by_date[value] for value in sampled_dates[: len(dates)]])
+        medians[replicate] = float(np.median(values))
+    lower, upper = np.quantile(medians, [0.05, 0.95], method="linear")
+    return float(lower), float(upper)
+
+
+def _stratified_robustness(
+    listed: pd.DataFrame,
+    both: pd.DataFrame,
+    dominance: pd.DataFrame,
+) -> dict[str, list[dict[str, Any]]]:
+    listed_frame = listed.copy()
+    both_frame = both.copy()
+    dominance_frame = dominance.copy()
+    for frame in (listed_frame, both_frame, dominance_frame):
+        frame["year"] = pd.to_datetime(frame["forecast_session"]).dt.year
+
+    def summarize(
+        label: dict[str, Any],
+        listed_slice: pd.DataFrame,
+        both_slice: pd.DataFrame,
+        dominance_slice: pd.DataFrame,
+    ) -> dict[str, Any]:
+        primary_exact = listed_slice["primary_q_horizon_status"].eq("OK")
+        comparator_exact = listed_slice["comparator_q_horizon_status"].eq("OK")
+        signed = pd.to_numeric(both_slice["signed_relative_delta"], errors="coerce").dropna()
+        absolute = signed.abs()
+        return {
+            **label,
+            "listed_h20_rows": len(listed_slice),
+            "primary_exact_h20_rows": int(primary_exact.sum()),
+            "paired_exact_h20_rows": len(both_slice),
+            "paired_exact_coverage": (
+                len(both_slice) / int(primary_exact.sum()) if int(primary_exact.sum()) else 0.0
+            ),
+            "exact_availability_agreement": float((primary_exact == comparator_exact).mean())
+            if len(listed_slice)
+            else 0.0,
+            "median_signed_relative_delta": float(signed.median()) if len(signed) else None,
+            "median_absolute_relative_delta": float(absolute.median()) if len(absolute) else None,
+            "p90_absolute_relative_delta": float(absolute.quantile(0.90))
+            if len(absolute)
+            else None,
+            "wing_paired_rows": len(dominance_slice),
+            "wing_agreement": float(
+                (
+                    dominance_slice["primary_wing_dominance"]
+                    == dominance_slice["comparator_wing_dominance"]
+                ).mean()
+            )
+            if len(dominance_slice)
+            else None,
+        }
+
+    output: dict[str, list[dict[str, Any]]] = {
+        "by_carrier": [],
+        "by_year": [],
+        "by_carrier_year": [],
+    }
+    for carrier, group in listed_frame.groupby("carrier_id", sort=True):
+        output["by_carrier"].append(
+            summarize(
+                {"carrier_id": str(carrier)},
+                group,
+                both_frame.loc[both_frame["carrier_id"].eq(carrier)],
+                dominance_frame.loc[dominance_frame["carrier_id"].eq(carrier)],
+            )
+        )
+    for year, group in listed_frame.groupby("year", sort=True):
+        output["by_year"].append(
+            summarize(
+                {"year": int(year)},
+                group,
+                both_frame.loc[both_frame["year"].eq(year)],
+                dominance_frame.loc[dominance_frame["year"].eq(year)],
+            )
+        )
+    for (carrier, year), group in listed_frame.groupby(["carrier_id", "year"], sort=True):
+        output["by_carrier_year"].append(
+            summarize(
+                {"carrier_id": str(carrier), "year": int(year)},
+                group,
+                both_frame.loc[both_frame["carrier_id"].eq(carrier) & both_frame["year"].eq(year)],
+                dominance_frame.loc[
+                    dominance_frame["carrier_id"].eq(carrier) & dominance_frame["year"].eq(year)
+                ],
+            )
+        )
+    return output
+
+
+def evaluate_q_robustness(
+    primary: pd.DataFrame,
+    comparator: pd.DataFrame,
+    *,
+    block_length: int = 20,
+    seed: int = 2026082300,
+    replicates: int = 2000,
+) -> dict[str, Any]:
     keys = ["forecast_session", "carrier_id", "horizon_sessions"]
-    left = main.add_prefix("main_").rename(columns={f"main_{key}": key for key in keys})
-    right = robust.add_prefix("robust_").rename(columns={f"robust_{key}": key for key in keys})
+    left = primary.add_prefix("primary_").rename(columns={f"primary_{key}": key for key in keys})
+    right = comparator.add_prefix("comparator_").rename(
+        columns={f"comparator_{key}": key for key in keys}
+    )
     paired = left.merge(right, on=keys, how="inner")
     listed_h20 = paired.loc[
-        paired["horizon_sessions"].eq(20) & paired["main_q_horizon_status"].ne("NOT_LISTED")
+        paired["horizon_sessions"].eq(20) & paired["primary_q_horizon_status"].ne("NOT_LISTED")
     ].copy()
-    main_exact = listed_h20["main_q_horizon_status"].eq("OK")
-    robust_exact = listed_h20["robust_q_horizon_status"].eq("OK")
-    both = listed_h20.loc[main_exact & robust_exact].copy()
-    main_count = int(main_exact.sum())
+    primary_exact = listed_h20["primary_q_horizon_status"].eq("OK")
+    comparator_exact = listed_h20["comparator_q_horizon_status"].eq("OK")
+    both = listed_h20.loc[primary_exact & comparator_exact].copy()
+    primary_count = int(primary_exact.sum())
     paired_count = len(both)
-    paired_coverage = paired_count / main_count if main_count else 0.0
-    relative = (
-        pd.to_numeric(both["robust_q_variance"]) - pd.to_numeric(both["main_q_variance"])
-    ).abs() / pd.to_numeric(both["main_q_variance"])
-    availability_agreement = float((main_exact == robust_exact).mean()) if len(listed_h20) else 0.0
+    paired_coverage = paired_count / primary_count if primary_count else 0.0
+    both["signed_relative_delta"] = (
+        pd.to_numeric(both["comparator_q_variance"]) - pd.to_numeric(both["primary_q_variance"])
+    ) / pd.to_numeric(both["primary_q_variance"])
+    signed = pd.to_numeric(both["signed_relative_delta"], errors="coerce").dropna()
+    absolute = signed.abs()
+    availability_agreement = (
+        float((primary_exact == comparator_exact).mean()) if len(listed_h20) else 0.0
+    )
     dominance = paired.loc[
         paired["horizon_sessions"].eq(20)
-        & paired["main_wing_dominance"].notna()
-        & paired["robust_wing_dominance"].notna()
-    ]
+        & paired["primary_wing_dominance"].notna()
+        & paired["comparator_wing_dominance"].notna()
+    ].copy()
     dominance_agreement = (
-        float((dominance["main_wing_dominance"] == dominance["robust_wing_dominance"]).mean())
+        float(
+            (dominance["primary_wing_dominance"] == dominance["comparator_wing_dominance"]).mean()
+        )
         if len(dominance)
         else 0.0
     )
+    ci_lower, ci_upper = _moving_date_block_median_ci(
+        both,
+        block_length=block_length,
+        seed=seed,
+        replicates=replicates,
+    )
     metrics = {
-        "main_exact_h20_rows": main_count,
+        "primary_exact_h20_rows": primary_count,
         "paired_exact_h20_rows": paired_count,
-        "paired_eligible_coverage": paired_coverage,
-        "median_absolute_relative_q_variance_delta": float(relative.median())
-        if len(relative)
+        "paired_exact_coverage": paired_coverage,
+        "median_signed_relative_q_variance_delta": float(signed.median()) if len(signed) else None,
+        "median_absolute_relative_q_variance_delta": float(absolute.median())
+        if len(absolute)
         else None,
-        "p90_absolute_relative_q_variance_delta": float(relative.quantile(0.90))
-        if len(relative)
+        "p90_absolute_relative_q_variance_delta": float(absolute.quantile(0.90))
+        if len(absolute)
         else None,
         "exact_bracket_availability_agreement": availability_agreement,
         "dominant_side_paired_rows": len(dominance),
         "dominant_side_agreement": dominance_agreement,
+        "median_signed_relative_delta_block_ci90": [ci_lower, ci_upper],
+        "bootstrap": {
+            "kind": "MOVING_DATE_BLOCK",
+            "replicates": replicates,
+            "block_length_sessions": block_length,
+            "confidence": 0.90,
+            "seed": seed,
+        },
     }
-    if paired_count < 126 or len(dominance) < 126 or paired_coverage < 0.70:
+    insufficient = bool(
+        paired_count < 126
+        or len(dominance) < 126
+        or paired_coverage < 0.70
+        or ci_lower is None
+        or ci_upper is None
+    )
+    if insufficient:
         verdict = "INSUFFICIENT_EVIDENCE"
         reason = "PAIRED_Q_ROBUSTNESS_COVERAGE_BELOW_FROZEN_GATE"
     else:
+        assert ci_lower is not None
+        assert ci_upper is not None
         passed = bool(
-            relative.median() <= 0.05
-            and relative.quantile(0.90) <= 0.15
+            absolute.median() <= 0.05
+            and absolute.quantile(0.90) <= 0.15
             and availability_agreement >= 0.95
             and dominance_agreement >= 0.90
+            and ci_lower >= -0.05
+            and ci_upper <= 0.05
         )
         verdict = "PASS" if passed else "FAIL"
-        reason = "FROZEN_Q_ROBUSTNESS_GATES_PASSED" if passed else "FROZEN_Q_ROBUSTNESS_GATE_FAILED"
-    return {**metrics, "verdict": verdict, "reason": reason}
+        reason = (
+            "FROZEN_SETTLEMENT_Q_ROBUSTNESS_GATES_PASSED"
+            if passed
+            else "FROZEN_SETTLEMENT_Q_ROBUSTNESS_GATE_FAILED"
+        )
+    return {
+        **metrics,
+        "strata": _stratified_robustness(listed_h20, both, dominance),
+        "verdict": verdict,
+        "reason": reason,
+    }
 
 
 def enrich_outcomes_with_q(outcomes: pd.DataFrame, q: pd.DataFrame) -> pd.DataFrame:
@@ -511,10 +610,12 @@ def enrich_outcomes_with_q(outcomes: pd.DataFrame, q: pd.DataFrame) -> pd.DataFr
 def _render_report(summary: dict[str, Any]) -> str:
     robustness = summary["robustness"]
     lines = [
-        "# MatSHIX V2 H3 Q acceptance",
+        "# MatSHIX V2.1.1 H3 settlement Q acceptance",
         "",
         f"- Authority: `{AUTHORITY_VERSION}`",
         f"- Q definition: `{Q_DEFINITION_VERSION}`",
+        f"- Confirmation: `{summary['confirmation_range'][0]}` -> "
+        f"`{summary['confirmation_range'][1]}`",
         f"- Q gate: `{summary['q_gate']}`",
         f"- Stop required: `{str(summary['stop_required']).lower()}`",
         "- Future outcome used for Q construction/selection: `false`",
@@ -531,22 +632,29 @@ def _render_report(summary: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## Frozen near-close robustness gate",
+            "## Frozen settlement-vs-14:56 Confirmation gate",
             "",
             f"- verdict/reason: `{robustness['verdict']}` / `{robustness['reason']}`",
             f"- paired exact H20: `{robustness['paired_exact_h20_rows']}` / "
-            f"`{robustness['main_exact_h20_rows']}` = "
-            f"`{robustness['paired_eligible_coverage']:.2%}`",
+            f"`{robustness['primary_exact_h20_rows']}` = "
+            f"`{robustness['paired_exact_coverage']:.2%}`",
             f"- median/p90 absolute relative Q variance delta: "
             f"`{robustness['median_absolute_relative_q_variance_delta']}` / "
             f"`{robustness['p90_absolute_relative_q_variance_delta']}`",
+            f"- median signed relative delta: "
+            f"`{robustness['median_signed_relative_q_variance_delta']}`",
+            f"- 90% moving-date-block CI of median signed delta: "
+            f"`{robustness['median_signed_relative_delta_block_ci90']}`",
             f"- exact availability agreement: "
             f"`{robustness['exact_bracket_availability_agreement']:.2%}`",
             f"- wing dominant-side agreement: `{robustness['dominant_side_agreement']:.2%}` "
             f"over `{robustness['dominant_side_paired_rows']}` rows",
             "",
-            "Q gate 非 PASS 时，Authority 要求停止，不得继续用 P、Q−P、策略收益或 proxy "
-            "选择给 Q 补洞。",
+            "Primary 为 provider-reconstructed EOD settlement；comparator 为 14:56 "
+            "minute close。两者均不产生 bid/ask、tradable 或 formal PIT 声明。",
+            "",
+            "Q gate 非 PASS 时，Authority 要求停止，不得继续用 H4、P、Q−P、策略收益"
+            "或另一个 proxy 给 Q 补洞。",
             "",
         ]
     )
@@ -560,9 +668,10 @@ def run_v2_q_build(
     progress: Progress | None = None,
 ) -> V2QArtifacts:
     project = project_dir.expanduser().resolve()
-    outcome_path = project / "data/processed/v2/realized_outcome_ledger.parquet"
+    authority_chain = verify_authority_chain(project)
+    outcome_path = project / "data/processed/v2_1/realized_outcome_ledger.parquet"
     if not outcome_path.is_file():
-        raise FileNotFoundError("H2 outcome ledger must be built before H3 Q")
+        raise FileNotFoundError("V2.1 H2 outcome ledger must be built before H3 Q")
     outcomes = pd.read_parquet(outcome_path)
     metadata = outcomes[
         [
@@ -583,40 +692,63 @@ def run_v2_q_build(
     end = pd.Timestamp(metadata["forecast_session"].max()).date().isoformat()
     paths = AetfPaths.from_root(aetf_root)
     if progress is not None:
-        progress("extracting frozen 14:56 main Q inputs")
-    extraction = extract_history(paths, start=start, end=end)
-    main_rows, main_surfaces = _surface_rows(
-        extraction.option_prices,
-        extraction.etf_marks,
-        price_proxy="MINUTE_CLOSE_1456",
+        progress("extracting provider-reconstructed settlement primary Q inputs")
+    settlement = extract_settlement_history(paths, start=start, end=end)
+    primary_rows, primary_surfaces = _surface_rows(
+        settlement.option_prices,
+        settlement.etf_marks,
+        price_proxy="PROVIDER_RECONSTRUCTED_EOD_SETTLEMENT",
+        observation_time=settlement_observation_time,
+        methodology_version="MATSHIX_RESEARCH_SETTLEMENT_SURFACE_2_1_1",
         progress=progress,
     )
-    main_q = _build_q_ledger(metadata, main_rows, main_surfaces, price_proxy="MINUTE_CLOSE_1456")
-    if progress is not None:
-        progress("extracting outcome-blind 14:52-14:56 positive-trade VWAP inputs")
-    robust_prices = _extract_near_close_vwap(paths, start=start, end=end)
-    robust_rows, robust_surfaces = _surface_rows(
-        robust_prices,
-        extraction.etf_marks,
-        price_proxy="NEAR_CLOSE_PRINT_VWAP_1452_1456",
-        progress=progress,
-    )
-    robust_q = _build_q_ledger(
+    primary_q = _build_q_ledger(
         metadata,
-        robust_rows,
-        robust_surfaces,
-        price_proxy="NEAR_CLOSE_PRINT_VWAP_1452_1456",
+        primary_rows,
+        primary_surfaces,
+        price_proxy="PROVIDER_RECONSTRUCTED_EOD_SETTLEMENT",
+        observation_time=settlement_observation_time,
+        known_at=settlement_known_at,
+        liquidity_status="EXCHANGE_SETTLEMENT_PROVIDER_RECONSTRUCTED",
     )
-    robustness = evaluate_q_robustness(main_q, robust_q)
-    enriched = enrich_outcomes_with_q(outcomes, main_q)
-    processed = project / "data/processed/v2"
-    output = project / "outputs/v2_q_acceptance"
-    q_path = write_parquet(main_q, processed / "q_weather_ledger.parquet")
-    robust_path = write_parquet(robust_q, processed / "q_robustness_ledger.parquet")
+    if progress is not None:
+        progress("extracting frozen 14:56 close comparator Q inputs")
+    close = extract_history(paths, start=start, end=end)
+    comparator_rows, comparator_surfaces = _surface_rows(
+        close.option_prices,
+        close.etf_marks,
+        price_proxy="MINUTE_CLOSE_1456",
+        observation_time=surface_cutoff,
+        methodology_version="MATSHIX_RESEARCH_MINUTE_CLOSE_V2",
+        progress=progress,
+    )
+    comparator_q = _build_q_ledger(
+        metadata,
+        comparator_rows,
+        comparator_surfaces,
+        price_proxy="MINUTE_CLOSE_1456",
+        observation_time=surface_cutoff,
+        known_at=surface_cutoff,
+        liquidity_status="RECONSTRUCTED_ASOF_CLOSE_NO_BID_ASK",
+    )
+    confirmation_primary = primary_q.loc[
+        pd.to_datetime(primary_q["forecast_session"]).between(CONFIRMATION_START, CONFIRMATION_END)
+    ].copy()
+    confirmation_comparator = comparator_q.loc[
+        pd.to_datetime(comparator_q["forecast_session"]).between(
+            CONFIRMATION_START, CONFIRMATION_END
+        )
+    ].copy()
+    robustness = evaluate_q_robustness(confirmation_primary, confirmation_comparator)
+    enriched = enrich_outcomes_with_q(outcomes, primary_q)
+    processed = project / "data/processed/v2_1"
+    output = project / "outputs/v2_1_q_acceptance"
+    q_path = write_parquet(primary_q, processed / "q_weather_ledger.parquet")
+    robust_path = write_parquet(comparator_q, processed / "q_robustness_ledger.parquet")
     enriched_path = write_parquet(enriched, processed / "realized_outcome_q_labeled_ledger.parquet")
-    listed = main_q["q_horizon_status"].ne("NOT_LISTED")
+    listed = primary_q["q_horizon_status"].ne("NOT_LISTED")
     coverage_rows: list[dict[str, Any]] = []
-    for (carrier, horizon), group in main_q.loc[listed].groupby(
+    for (carrier, horizon), group in primary_q.loc[listed].groupby(
         ["carrier_id", "horizon_sessions"], sort=True
     ):
         exact = int(group["q_horizon_status"].eq("OK").sum())
@@ -631,15 +763,43 @@ def run_v2_q_build(
         )
     q_gate = str(robustness["verdict"])
     summary: dict[str, Any] = {
+        "authority_document": AUTHORITY_DOCUMENT,
         "authority_version": AUTHORITY_VERSION,
+        "authority_sha256": AUTHORITY_SHA256,
+        "parent_authority_sha256": PARENT_AUTHORITY_SHA256,
+        "root_v2_authority_sha256": ROOT_V2_AUTHORITY_SHA256,
+        "parent_adjudication_sha256": PARENT_ADJUDICATION_SHA256,
+        "construction_plan_sha256": CONSTRUCTION_PLAN_SHA256,
+        "authority_chain": authority_chain,
         "q_definition_version": Q_DEFINITION_VERSION,
         "outcome_definition_version": OUTCOME_DEFINITION_VERSION,
+        "repository": repository_provenance(project),
+        "runtime": runtime_provenance(),
+        "inputs": {
+            "aetf_root": str(Path(aetf_root).expanduser().resolve()),
+            "option_minute_glob": paths.option_minutes,
+            "option_daily_glob": paths.option_daily,
+            "option_contracts": str(paths.option_contracts),
+            "option_contracts_sha256": file_hash(paths.option_contracts),
+            "etf_minute_glob": paths.etf_minutes,
+            "etf_daily_glob": paths.etf_daily,
+            "aetf_readme": str(paths.readme),
+            "aetf_readme_sha256": file_hash(paths.readme),
+            "outcome_ledger": str(outcome_path.relative_to(project)),
+            "outcome_ledger_sha256": file_hash(outcome_path),
+        },
+        "confirmation_range": [
+            CONFIRMATION_START.date().isoformat(),
+            CONFIRMATION_END.date().isoformat(),
+        ],
         "q_gate": q_gate,
         "stop_required": q_gate != "PASS",
         "stop_reason": None if q_gate == "PASS" else robustness["reason"],
         "evidence_boundary": {
-            "main_price_proxy": "MINUTE_CLOSE_1456",
-            "robustness_price_proxy": "NEAR_CLOSE_PRINT_VWAP_1452_1456",
+            "primary_price_proxy": "PROVIDER_RECONSTRUCTED_EOD_SETTLEMENT",
+            "robustness_price_proxy": "MINUTE_CLOSE_1456",
+            "primary_observation_time": "15:00:00 Asia/Shanghai",
+            "primary_known_at": "23:59:59 Asia/Shanghai",
             "formal_bid_ask_available": False,
             "future_outcome_values_used_for_q_construction": False,
             "future_outcome_values_used_for_q_proxy_selection": False,
@@ -647,7 +807,8 @@ def run_v2_q_build(
         },
         "exact_coverage": coverage_rows,
         "q_horizon_status_counts": {
-            str(key): int(value) for key, value in main_q["q_horizon_status"].value_counts().items()
+            str(key): int(value)
+            for key, value in primary_q["q_horizon_status"].value_counts().items()
         },
         "robustness": robustness,
         "path_label_counts_by_horizon": [

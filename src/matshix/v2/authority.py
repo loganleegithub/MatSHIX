@@ -1,27 +1,42 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from matshix.constants import CARRIER_TO_INDEX
+from matshix.serialization import file_hash
 
-AUTHORITY_VERSION = "2.0.0"
+AUTHORITY_VERSION = "2.1.1"
 ERA_DEFINITION_VERSION = "2.0.0"
 SAMPLING_GRID_VERSION = "ETF_5M_GRID_XSHG_2.0.0"
-OUTCOME_DEFINITION_VERSION = "2.0.0"
-Q_DEFINITION_VERSION = "2.0.0"
-STATE_DEFINITION_VERSION = "2.0.0"
-PHASE_DEFINITION_VERSION = "2.0.0"
-CAPABILITY_DEFINITION_VERSION = "2.0.0"
-TARGET_DEFINITION_VERSION = "2.0.0"
-PREDICTOR_REGISTRY_VERSION = "2.0.0"
-PHYSICAL_MODEL_VERSION = "2.0.0"
-QP_DEFINITION_VERSION = "2.0.0"
-PROBABILITY_DEFINITION_VERSION = "2.0.0"
-ACCEPTANCE_DEFINITION_VERSION = "2.0.0"
-FAILURE_LEDGER_VERSION = "2.0.0"
-WEATHER_SNAPSHOT_SCHEMA_VERSION = "2.0.0"
+OUTCOME_DEFINITION_VERSION = "2.1.1"
+Q_DEFINITION_VERSION = "2.1.1"
+STATE_DEFINITION_VERSION = "2.1.1"
+PHASE_DEFINITION_VERSION = "2.1.1"
+CAPABILITY_DEFINITION_VERSION = "2.1.1"
+TARGET_DEFINITION_VERSION = "2.1.1"
+PREDICTOR_REGISTRY_VERSION = "2.1.1"
+PHYSICAL_MODEL_VERSION = "2.1.1"
+QP_DEFINITION_VERSION = "2.1.1"
+PROBABILITY_DEFINITION_VERSION = "2.1.1"
+ACCEPTANCE_DEFINITION_VERSION = "2.1.1"
+FAILURE_LEDGER_VERSION = "2.1.1"
+WEATHER_SNAPSHOT_SCHEMA_VERSION = "2.1.1"
+
+AUTHORITY_DOCUMENT = "MATSHIX_V2_1_1_AUTHORITY.md"
+AUTHORITY_SHA256 = "03c06e4c861bd313d0502ecbc25ee1e18511c7a080b8bc2fa1fb3eaf451c0705"
+CONSTRUCTION_PLAN_SHA256 = "785008372be80ff9375aea592ee96532397d67f91b0f633390683ff5056d848f"
+PARENT_AUTHORITY_SHA256 = "d41dd08b93548ce6c3ab6f2e5bda503a5e11b0d022814fbbcdffec27bbd13557"
+ROOT_V2_AUTHORITY_SHA256 = "18309ed4e71c8e8074ea3abc5645f25e465b612b300ad3b80ed9379776dad152"
+PARENT_ADJUDICATION_SHA256 = "eb0a0b90db9d3e3213c620568bc472ba2bbe62cb0a36fba78f042ec9e0315ebc"
+DESIGN_AUDIT_SHA256 = "4adffd096aa937196c97b905a8f3c3f088d32b026ea5763677e5a147d39ca579"
+
+DEVELOPMENT_START = pd.Timestamp("2023-01-03")
+DEVELOPMENT_END = pd.Timestamp("2024-12-31")
+CONFIRMATION_START = pd.Timestamp("2025-01-02")
+CONFIRMATION_END = pd.Timestamp("2026-06-05")
 
 HORIZONS = (5, 10, 20)
 
@@ -70,6 +85,28 @@ EXPECTED_LISTING_DATES = {
     "CSI500_510500": pd.Timestamp("2022-09-19"),
     "STAR50_588000": pd.Timestamp("2023-06-05"),
 }
+
+
+def verify_authority_chain(project: Path) -> dict[str, dict[str, str]]:
+    expected = {
+        AUTHORITY_DOCUMENT: AUTHORITY_SHA256,
+        "MATSHIX_V2_1_AUTHORITY.md": PARENT_AUTHORITY_SHA256,
+        "MATSHIX_V2_AUTHORITY.md": ROOT_V2_AUTHORITY_SHA256,
+        "MATSHIX_V2_ADJUDICATION.md": PARENT_ADJUDICATION_SHA256,
+        "MATSHIX_V2_1_DESIGN_AUDIT.md": DESIGN_AUDIT_SHA256,
+        "MATSHIX_V2_CONSTRUCTION_PLAN.md": CONSTRUCTION_PLAN_SHA256,
+    }
+    verified: dict[str, dict[str, str]] = {}
+    for relative, expected_digest in expected.items():
+        path = project / relative
+        actual_digest = file_hash(path).removeprefix("sha256:")
+        if actual_digest != expected_digest:
+            raise ValueError(
+                f"frozen Authority chain mismatch for {relative}: "
+                f"expected {expected_digest}, got {actual_digest}"
+            )
+        verified[relative] = {"sha256": actual_digest, "status": "VERIFIED"}
+    return verified
 
 
 def era_for_session(session: str | pd.Timestamp) -> dict[str, Any]:

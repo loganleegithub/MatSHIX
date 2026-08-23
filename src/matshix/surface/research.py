@@ -477,6 +477,7 @@ def build_carrier_surface(
     nearest_delta_max_distance: float = 0.12,
     nearest_atm_log_moneyness: float = 0.08,
     observation_time: datetime | None = None,
+    methodology_version: str = RESEARCH_SURFACE_METHOD,
 ) -> ResearchCarrierSurface:
     input_contracts = len(frame)
     standard_contracts = int(frame["is_standard"].fillna(False).sum())
@@ -571,7 +572,7 @@ def build_carrier_surface(
         carrier_id=carrier_id,
         economic_index_id=economic_index_id,
         evidence_tier="RESEARCH_ONLY",
-        methodology_version=RESEARCH_SURFACE_METHOD,
+        methodology_version=methodology_version,
         surface_status=status,
         input_contracts=input_contracts,
         standard_contracts=standard_contracts,
