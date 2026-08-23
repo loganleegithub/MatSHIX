@@ -1,0 +1,155 @@
+{
+  "failure_ledger_version": "2.1.1",
+  "candidate_id": "MATSHIX_V2_1_1_SETTLEMENT_CONFIRMATION_001",
+  "authority": {
+    "document": "MATSHIX_V2_1_1_AUTHORITY.md",
+    "sha256": "03c06e4c861bd313d0502ecbc25ee1e18511c7a080b8bc2fa1fb3eaf451c0705",
+    "parent_sha256": "d41dd08b93548ce6c3ab6f2e5bda503a5e11b0d022814fbbcdffec27bbd13557",
+    "root_v2_sha256": "18309ed4e71c8e8074ea3abc5645f25e465b612b300ad3b80ed9379776dad152",
+    "construction_plan_sha256": "785008372be80ff9375aea592ee96532397d67f91b0f633390683ff5056d848f"
+  },
+  "execution": {
+    "git_sha": "86aebf1d763fd9382cf14dfa9eb71afb81f74d95",
+    "git_tree_sha": "c786650a74005ddde67331ee4bc92d7c0d7b74f8",
+    "branch": "codex/matshix-weather-v2-1-settlement",
+    "confirmation_start": "2025-01-02",
+    "confirmation_end": "2026-06-05",
+    "first_execution_verdict": "FAIL",
+    "deterministic_replay_verdict": "FAIL",
+    "deterministic_replay_file_count": 5,
+    "deterministic_replay_hash_mismatch_count": 0,
+    "strategy_inputs_used": false,
+    "future_outcome_used_for_q_construction_or_proxy_selection": false
+  },
+  "top_level_verdict": "V2_STATION_NOT_READY",
+  "stop": {
+    "stage": "H3_Q_SURFACE",
+    "core_gate": "Q=FAIL",
+    "reason": "FROZEN_SETTLEMENT_Q_ROBUSTNESS_GATE_FAILED",
+    "precise_failed_gate": "EXACT_BRACKET_AVAILABILITY_AGREEMENT_BELOW_FROZEN_GATE",
+    "stop_required": true,
+    "downstream_execution_prohibited": true
+  },
+  "stage_verdicts": {
+    "H0_V1_BASELINE": "PASS_PRESERVED",
+    "STAGE_A_BUSINESS_AUDIT": "COMPLETE_PRESERVED",
+    "H1_ERA_DATA": "PASS",
+    "H2_OUTCOME": "PASS",
+    "H3_Q_SURFACE": "FAIL",
+    "H4_TWO_SIDED_STATE": "NOT_EXECUTED",
+    "H5_PHYSICAL_FORECAST": "NOT_EXECUTED",
+    "H6_QP_PREMIUM": "NOT_EXECUTED",
+    "CANDIDATE_FREEZE": "NOT_EXECUTED",
+    "FORWARD_SHADOW": "NOT_EXECUTED",
+    "EXTERNAL_PROBE": "NOT_EXECUTED"
+  },
+  "frozen_q_gate_checks": [
+    {
+      "gate": "paired_exact_h20_rows",
+      "operator": ">=",
+      "threshold": 126,
+      "observed": 793,
+      "verdict": "PASS"
+    },
+    {
+      "gate": "paired_exact_h20_coverage",
+      "operator": ">=",
+      "threshold": 0.7,
+      "observed": 0.9850931677018634,
+      "verdict": "PASS"
+    },
+    {
+      "gate": "median_absolute_relative_q_variance_delta",
+      "operator": "<=",
+      "threshold": 0.05,
+      "observed": 0.007460459677824647,
+      "verdict": "PASS"
+    },
+    {
+      "gate": "p90_absolute_relative_q_variance_delta",
+      "operator": "<=",
+      "threshold": 0.15,
+      "observed": 0.02864998260064395,
+      "verdict": "PASS"
+    },
+    {
+      "gate": "exact_bracket_availability_agreement",
+      "operator": ">=",
+      "threshold": 0.95,
+      "observed": 0.8403790087463557,
+      "verdict": "FAIL"
+    },
+    {
+      "gate": "dominant_side_agreement",
+      "operator": ">=",
+      "threshold": 0.9,
+      "observed": 0.9251870324189526,
+      "observed_rows": 1203,
+      "verdict": "PASS"
+    },
+    {
+      "gate": "median_signed_relative_delta_block_ci90",
+      "operator": "entirely_within",
+      "threshold": [-0.05, 0.05],
+      "observed": [0.0033624387909165277, 0.006628686729172975],
+      "bootstrap_repetitions": 2000,
+      "bootstrap_block_length_sessions": 20,
+      "bootstrap_seed": 2026082300,
+      "verdict": "PASS"
+    }
+  ],
+  "failure_attribution": {
+    "listed_confirmation_h20_rows": 1372,
+    "primary_exact_h20_rows": 805,
+    "paired_exact_h20_rows": 793,
+    "primary_no_exact_comparator_exact_rows": 207,
+    "primary_exact_comparator_no_exact_rows": 12,
+    "neither_exact_rows": 360,
+    "largest_cohort": {
+      "carrier_id": "CSI500_510500",
+      "year": 2025,
+      "rows": 243,
+      "primary_exact_h20_rows": 44,
+      "paired_exact_h20_rows": 44,
+      "primary_no_exact_comparator_exact_rows": 138,
+      "exact_availability_agreement": 0.43209876543209874,
+      "wing_agreement": 0.8131868131868132
+    },
+    "interpretation": "Settlement and 14:56 exact-bracket observability is not stable enough under the frozen Confirmation gate. Low deltas on paired rows cannot substitute for the missing availability agreement."
+  },
+  "evidence_boundary": {
+    "evidence_tier": "RESEARCH_ONLY",
+    "vintage_kind": "PROVIDER_RECONSTRUCTED",
+    "formal_publication_status": "NOT_ELIGIBLE",
+    "tradable_price_claim": false,
+    "settlement_is_bid_ask_or_mid": false,
+    "qp_or_strategy_claim_allowed": false
+  },
+  "artifacts": {
+    "data/processed/v2_1/era_registry.parquet": "297b52f74f6882be5024b83a9955424dc47b209eee5b9319af43818069672be8",
+    "data/processed/v2_1/realized_outcome_ledger.parquet": "4204f5a57e144309627e7ce41510c3fa065c590214a291b1a647729c855652d4",
+    "data/processed/v2_1/outcome_issue_ledger.parquet": "2a95574fda951a2e4d5d0541e860249dcb49cabc8d3f9c0545552dbb6e23071d",
+    "outputs/v2_1_outcomes/coverage.json": "747fb9ab303477227409876b62351ef182f586aea0032c21fe5a25d534563ce2",
+    "outputs/v2_1_outcomes/handcheck.md": "daf40a7fed2321053243118f1778a31d388ef6cb67176620428edecd062039fd",
+    "data/processed/v2_1/q_weather_ledger.parquet": "0303c2ef0f1f143d03f791e008cee6f36c3b368bf2066ad51b33bddefe706bbd",
+    "data/processed/v2_1/q_robustness_ledger.parquet": "86c9b1bae91a9336b47638da38b4c8c2d88dc2a19fd4cea01e25cccd11d13014",
+    "data/processed/v2_1/realized_outcome_q_labeled_ledger.parquet": "30d174319223e2a32f5031abf2518bcd64366f8d63a2129d92e6fb0cf3cf6626",
+    "outputs/v2_1_q_acceptance/summary.json": "b3c5ceb15af6280a37452a83246e92e562cf8150c425ced2ca80d3693762e8ff",
+    "outputs/v2_1_q_acceptance/report.md": "f5d6b17ec20f491aa8b621e78825c2bf88d714c01541e36df4c4536f9571e0bd"
+  },
+  "preserved_shortvol_hashes": {
+    "src/matshix/research/shortvol.py": "8ff1e988937229abf591dde95b0d0b796fb756e9b2dd988ec11da4260c6641c8",
+    "src/matshix/research/shortvol_timing.py": "1034a0d942491ab084ee2ac20e7a172ea678927d829907aa0fccd5fd69bd0cd6",
+    "outputs/v2_baseline/v1_shortvol_timing_report.json": "e00346c5410900db96f32459dca1e9539d573fcdc2a691a090072195fb9b7503",
+    "outputs/v2_baseline/v1_shortvol_timing_panel.parquet": "1fc8885f936df321f1b094b647b69e19a4d3d2ad18c2bee55c6d7acf16e2398e"
+  },
+  "prohibited_remediation": [
+    "SELECT_LEGS",
+    "CHANGE_POSITION_SIZE",
+    "CHANGE_EXIT_RULE",
+    "LOWER_PROBABILITY_OR_ACCEPTANCE_GATE",
+    "USE_STRATEGY_RETURNS",
+    "REPLACE_UNKNOWN_OR_ABSTAIN_WITH_PASS",
+    "SELECT_ANOTHER_PRICE_WINDOW_AFTER_CONFIRMATION"
+  ]
+}
