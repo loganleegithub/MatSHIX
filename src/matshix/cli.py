@@ -18,6 +18,7 @@ from matshix.serialization import write_json
 from matshix.v2.local_station import run_v2_2_local_build
 from matshix.v2.outcomes import run_v2_outcome_build
 from matshix.v2.q_surface import run_v2_q_build
+from matshix.v2.settlement_audit import run_v2_2_settlement_audit
 from matshix.validation import verify_research_outputs
 
 app = typer.Typer(
@@ -237,6 +238,29 @@ def build_v2_2_local(
     )
     if artifacts.score["development_verdict"] != "DEVELOPMENT_PASS":
         raise typer.Exit(code=1)
+
+
+@app.command("audit-v2-2-settlement")
+def audit_v2_2_settlement(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+) -> None:
+    """Audit 2025 CSI500 settlement parity without changing pricing tolerances."""
+
+    artifacts = run_v2_2_settlement_audit(project_dir=project_dir, aetf_root=aetf_root)
+    _emit(
+        {
+            "verdict": artifacts.result["classification"]["verdict"],
+            "reason": artifacts.result["classification"]["reason"],
+            "json": str(artifacts.json_path),
+            "report": str(artifacts.report_path),
+            "deterministic_replay": artifacts.result["deterministic_replay"],
+            "pricing_tolerances_changed": False,
+            "strategy_inputs_used": False,
+        }
+    )
 
 
 @app.command("backtest-510300-shortvol")
