@@ -613,7 +613,7 @@ def run_v2_q_build(
     output = project / "outputs/v2_q_acceptance"
     q_path = write_parquet(main_q, processed / "q_weather_ledger.parquet")
     robust_path = write_parquet(robust_q, processed / "q_robustness_ledger.parquet")
-    enriched_path = write_parquet(enriched, outcome_path)
+    enriched_path = write_parquet(enriched, processed / "realized_outcome_q_labeled_ledger.parquet")
     listed = main_q["q_horizon_status"].ne("NOT_LISTED")
     coverage_rows: list[dict[str, Any]] = []
     for (carrier, horizon), group in main_q.loc[listed].groupby(
