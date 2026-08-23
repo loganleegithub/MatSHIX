@@ -48,4 +48,11 @@ python3.12 -m venv .venv
 
 正式方法与完整产品合同见 [MATSHIX_PRE_DEVELOPMENT_REPORT.md](MATSHIX_PRE_DEVELOPMENT_REPORT.md)。本次工程裁决见 [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)。
 当前真实数据字段、许可与正式拒发边界见 [DATA_ACCESS_REPORT.md](DATA_ACCESS_REPORT.md)。
-MatSHIX V2 的 Q/P/Q−P、站内验收、候选冻结和固定外部探针施工合同见 [MATSHIX_V2_CONSTRUCTION_PLAN.md](MATSHIX_V2_CONSTRUCTION_PLAN.md)。
+当前后续施工权威是 [MATSHIX_V3_CONSTRUCTION_PLAN.md](MATSHIX_V3_CONSTRUCTION_PLAN.md)：
+P 主站使用独立 HAR-RV，Q 独立发布期权定价事实，Q−P 只在同期限同单位下计算，Q 仅以
+非阻断 Challenger 检验增量预测信息。
+
+V2 完整施工链最终裁决为回顾性开发失败，未合并为主线运行时；其 Authority、实现、测试和
+失败证据保存在 Git 归档标签 `archive/matshix-v2.2.3-development-fail`。原始 V2 施工合同
+继续保留在 [MATSHIX_V2_CONSTRUCTION_PLAN.md](MATSHIX_V2_CONSTRUCTION_PLAN.md)，仅作
+历史合同与证据边界参考。
