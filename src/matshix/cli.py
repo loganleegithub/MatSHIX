@@ -16,6 +16,7 @@ from matshix.research.shortvol_timing import run_shortvol_timing_diagnostic
 from matshix.research.weather_v2_audit import run_weather_v2_business_audit
 from matshix.serialization import write_json
 from matshix.v2.outcomes import run_v2_outcome_build
+from matshix.v2.q_surface import run_v2_q_build
 from matshix.validation import verify_research_outputs
 
 app = typer.Typer(
@@ -179,6 +180,36 @@ def build_v2_outcomes(
         }
     )
     if artifacts.coverage["gates"]["outcome_integrity"] != "PASS":
+        raise typer.Exit(code=1)
+
+
+@app.command("build-v2-q")
+def build_v2_q(
+    aetf_root: Annotated[Path, typer.Option("--aetf-root")] = Path(
+        "/Users/logan/OptiMatrix_DATA/AETF"
+    ),
+    project_dir: Annotated[Path, typer.Option("--project-dir")] = Path("."),
+) -> None:
+    """Build exact target-horizon Q and the frozen outcome-blind robustness gate."""
+
+    artifacts = run_v2_q_build(
+        project_dir=project_dir,
+        aetf_root=aetf_root,
+        progress=lambda message: typer.echo(f"[MatSHIX V2 Q] {message}", err=True),
+    )
+    _emit(
+        {
+            "q_gate": artifacts.summary["q_gate"],
+            "stop_required": artifacts.summary["stop_required"],
+            "stop_reason": artifacts.summary["stop_reason"],
+            "q_ledger": str(artifacts.q_ledger_path),
+            "robustness_ledger": str(artifacts.robustness_ledger_path),
+            "summary": str(artifacts.summary_path),
+            "report": str(artifacts.report_path),
+            "strategy_inputs_used": False,
+        }
+    )
+    if artifacts.summary["q_gate"] != "PASS":
         raise typer.Exit(code=1)
 
 

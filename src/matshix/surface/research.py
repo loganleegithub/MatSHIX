@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -320,8 +321,9 @@ def build_expiry_surface(
     minimum_total_strikes: int = 9,
     nearest_delta_max_distance: float = 0.12,
     nearest_atm_log_moneyness: float = 0.08,
+    observation_time: datetime | None = None,
 ) -> ResearchExpirySurface:
-    cutoff = research_bar_time(session_date)
+    cutoff = observation_time or research_bar_time(session_date)
     year_fraction = year_fraction_act365f(cutoff, expiry_timestamp(expiry))
     dte = year_fraction * 365.0
     if year_fraction <= 0:
@@ -474,6 +476,7 @@ def build_carrier_surface(
     nearest_tenor_max_distance_days: dict[int, int] | None = None,
     nearest_delta_max_distance: float = 0.12,
     nearest_atm_log_moneyness: float = 0.08,
+    observation_time: datetime | None = None,
 ) -> ResearchCarrierSurface:
     input_contracts = len(frame)
     standard_contracts = int(frame["is_standard"].fillna(False).sum())
@@ -496,6 +499,7 @@ def build_carrier_surface(
             minimum_total_strikes=minimum_total_strikes,
             nearest_delta_max_distance=nearest_delta_max_distance,
             nearest_atm_log_moneyness=nearest_atm_log_moneyness,
+            observation_time=observation_time,
         )
         for expiry, group in eligible.groupby("expiry", sort=True)
     ]
