@@ -1,0 +1,57 @@
+{
+  "failure_ledger_version": "2.2.1",
+  "authority_sha256": "eb10f33b6b45da6707fabebba9a1556854c5e52f44978d4e3f82a47f9d4886b0",
+  "execution_git_sha": "bacaecc4a90b5dc033781faa9fd25ac3bd7a7759",
+  "carrier_scope": "CSI300_510300",
+  "development_era": ["2022-01-04", "2026-06-05"],
+  "development_verdict": "INSUFFICIENT_EVIDENCE",
+  "top_level_status": "V2_2_LOCAL_RESEARCH_BUILT",
+  "stop_layer": "H5_PHYSICAL_FORECAST",
+  "stop_reason": "EXACT_Q_AND_COMPLETE_STATE_CAUSAL_TRAINING_BELOW_252",
+  "sample_evidence": {
+    "forecast_sessions": 1069,
+    "h10_exact_q_rows": 289,
+    "h20_exact_q_rows": 724,
+    "h10_h20_joint_exact_rows": 288,
+    "complete_state_rows": 597,
+    "joint_exact_complete_state_rows": 187,
+    "maximum_causal_variance_training_rows": 181,
+    "maximum_causal_path_training_rows": 187,
+    "frozen_minimum_training_rows": 252,
+    "upside_labels": {"rows": 289, "positive": 42, "negative": 247},
+    "downside_labels": {"rows": 289, "positive": 63, "negative": 226}
+  },
+  "dimensions": [
+    {"dimension": "ENGINEERING", "verdict": "PASS"},
+    {
+      "dimension": "P_VARIANCE_H20",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "VARIANCE_PAIRED_ROWS_BELOW_126"
+    },
+    {
+      "dimension": "P_UP_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET"
+    },
+    {
+      "dimension": "P_DOWN_PATH_H10",
+      "verdict": "INSUFFICIENT_EVIDENCE",
+      "reason": "PATH_SAMPLE_GATE_NOT_MET"
+    },
+    {
+      "dimension": "Q_MINUS_P_H20",
+      "verdict": "NOT_APPLICABLE",
+      "reason": "P_VARIANCE_GATE_NOT_PASS"
+    }
+  ],
+  "artifact_hashes": {
+    "data/processed/v2_2/csi300_local_q_ledger.parquet": "079591e570fe2f992b84bc9b4169340f0810925c26bb94a52addfc920d9b36b5",
+    "data/processed/v2_2/csi300_local_outcome_ledger.parquet": "642ecec6899e0d520c01b8717bc09c93fb95f7edc24bdabb4afde53fc6ccebd2",
+    "data/processed/v2_2/csi300_local_ledger.parquet": "ac5318740d0b915d0af9769fce018a179f3e9bfda3c98bfc288a8b535c746032",
+    "outputs/v2_2_local/development_score.json": "501b38caddceeb7013dff7f347879b515e7cdc37a592fb3f365cda3dc6babb6e",
+    "outputs/v2_2_local/failure_ledger.json": "c3271604c73d52b9ce5bd303dc25b263287b955444177c6f9caa3b5e09a3d838"
+  },
+  "deterministic_replay": true,
+  "strategy_inputs_used": false,
+  "forward_acceptance_executed": false
+}
