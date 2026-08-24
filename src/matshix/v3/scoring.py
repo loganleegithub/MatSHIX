@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
+from matshix.calendar import exchange_sessions_in_range
 from matshix.v3.authority import (
     BOOTSTRAP_BLOCK_LENGTH,
     BOOTSTRAP_REPETITIONS,
     CHALLENGER_FEATURES,
     FORBIDDEN_MODEL_FIELDS,
     HAR_FEATURES,
+    HORIZON_SESSIONS,
     P_BOOTSTRAP_SEED,
-    QP_BOOTSTRAP_SEED,
+    TRADING_DAYS_PER_YEAR,
 )
 from matshix.v3.outcomes import EXPECTED_INTRADAY_RETURNS
 
@@ -31,18 +31,46 @@ def _all_finite(frame: pd.DataFrame, fields: tuple[str, ...]) -> pd.Series:
     return result
 
 
+def _moving_date_blocks(
+    sessions: pd.Series,
+    *,
+    block_length: int,
+) -> tuple[np.ndarray, ...]:
+    normalized = pd.DatetimeIndex(pd.to_datetime(sessions)).tz_localize(None).normalize()
+    if len(normalized) == 0:
+        return ()
+    if normalized.has_duplicates or not normalized.is_monotonic_increasing:
+        raise ValueError("bootstrap sessions must be unique and increasing")
+    calendar = exchange_sessions_in_range(normalized[0], normalized[-1])
+    calendar_positions = {pd.Timestamp(value): position for position, value in enumerate(calendar)}
+    try:
+        ordinals = np.asarray([calendar_positions[pd.Timestamp(value)] for value in normalized])
+    except KeyError as error:
+        raise ValueError(f"bootstrap date is not an XSHG session: {error.args[0]}") from error
+    maximum_start = max(len(calendar) - block_length, 0)
+    blocks: list[np.ndarray] = []
+    for start in range(maximum_start + 1):
+        positions = np.flatnonzero((ordinals >= start) & (ordinals < start + block_length))
+        if len(positions):
+            blocks.append(positions)
+    return tuple(blocks)
+
+
 def _block_positions(
-    length: int,
+    sessions: pd.Series,
     *,
     block_length: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
+    length = len(sessions)
+    blocks = _moving_date_blocks(sessions, block_length=block_length)
+    if not blocks:
+        return np.asarray([], dtype=int)
     selected: list[int] = []
-    maximum_start = max(length - block_length, 0)
     while len(selected) < length:
-        start = int(rng.integers(0, maximum_start + 1))
-        width = min(block_length, length - len(selected), length - start)
-        selected.extend(range(start, start + width))
+        block = blocks[int(rng.integers(0, len(blocks)))]
+        width = min(len(block), length - len(selected))
+        selected.extend(block[:width].tolist())
     return np.asarray(selected, dtype=int)
 
 
@@ -63,7 +91,7 @@ def _bootstrap_skill_lower(
     samples: list[float] = []
     for _ in range(BOOTSTRAP_REPETITIONS):
         positions = _block_positions(
-            len(paired), block_length=BOOTSTRAP_BLOCK_LENGTH, rng=rng
+            paired["forecast_session"], block_length=BOOTSTRAP_BLOCK_LENGTH, rng=rng
         )
         candidate_loss = float(qlike(actual[positions], forecast[positions]).mean())
         baseline_loss = min(
@@ -74,16 +102,11 @@ def _bootstrap_skill_lower(
     return float(np.quantile(samples, 0.05)) if samples else None
 
 
-def _spearman(left: pd.Series, right: pd.Series) -> float | None:
-    if len(left) < 3 or left.nunique(dropna=True) < 2 or right.nunique(dropna=True) < 2:
-        return None
-    value = float(spearmanr(left.to_numpy(dtype=float), right.to_numpy(dtype=float)).statistic)
-    return value if np.isfinite(value) else None
-
-
 def evaluate_outcome_integrity(outcomes: pd.DataFrame) -> dict[str, Any]:
     observed = outcomes.loc[outcomes["outcome_status"].eq("OBSERVED")].copy()
     censored = outcomes.loc[outcomes["outcome_status"].eq("CENSORED")].copy()
+    annualized = pd.to_numeric(observed["rv_variance_h20"], errors="coerce")
+    total = pd.to_numeric(observed["rv_total_variance_h20"], errors="coerce")
     checks = {
         "single_carrier_h20": bool(
             outcomes["carrier_id"].nunique() == 1
@@ -91,13 +114,23 @@ def evaluate_outcome_integrity(outcomes: pd.DataFrame) -> dict[str, Any]:
         ),
         "observed_positive": bool(
             len(observed) > 0
-            and pd.to_numeric(observed["rv_variance_h20"], errors="coerce").gt(0).all()
+            and annualized.gt(0).all()
+            and total.gt(0).all()
+        ),
+        "total_annualized_identity": bool(
+            len(observed) > 0
+            and (
+                annualized - total * TRADING_DAYS_PER_YEAR / HORIZON_SESSIONS
+            ).abs().le(1e-12).all()
         ),
         "observed_bar_counts_complete": bool(
             observed["valid_bar_count"].eq(20 * EXPECTED_INTRADAY_RETURNS).all()
         ),
         "censored_is_null": bool(
             pd.to_numeric(censored["rv_variance_h20"], errors="coerce").isna().all()
+            and pd.to_numeric(censored["rv_total_variance_h20"], errors="coerce")
+            .isna()
+            .all()
         ),
         "outcome_after_forecast": bool(
             pd.to_datetime(outcomes["target_start_session"])
@@ -147,13 +180,13 @@ def evaluate_engineering(
         "primary_features_exact": HAR_FEATURES
         == ("log_rv_d1_lag1", "log_mean_rv_d5_lag1", "log_mean_rv_d22_lag1"),
         "challenger_features_exact": CHALLENGER_FEATURES
-        == (*HAR_FEATURES, "log_q_variance_h20"),
+        == (*HAR_FEATURES, "log_q_total_variance_h20"),
         "h4_absent_from_models": not bool(
             set(HAR_FEATURES + CHALLENGER_FEATURES).intersection(FORBIDDEN_MODEL_FIELDS)
         ),
         "strategy_columns_absent": not bool(lower_columns.intersection(strategy_columns)),
         "strategy_modules_not_loaded": not strategy_modules_loaded,
-        "q_missing_does_not_block_p": "log_q_variance_h20" not in HAR_FEATURES,
+        "q_missing_does_not_block_p": "log_q_total_variance_h20" not in HAR_FEATURES,
         "single_local_carrier": bool(frame["carrier_id"].nunique() == 1),
     }
     return {
@@ -289,6 +322,7 @@ def evaluate_p_core(frame: pd.DataFrame) -> dict[str, Any]:
         "extreme_qlike": extreme_losses,
         "bootstrap": {
             "kind": "MOVING_DATE_BLOCK",
+            "gap_handling": "PRESERVE_MISSING_XSHG_SESSIONS",
             "repetitions": BOOTSTRAP_REPETITIONS,
             "block_length_sessions": BOOTSTRAP_BLOCK_LENGTH,
             "confidence": 0.90,
@@ -402,6 +436,14 @@ def evaluate_challenger(frame: pd.DataFrame) -> dict[str, Any]:
             "P_PRIMARY_HAR": extreme_primary_loss,
             "P_HAR_Q_CHALLENGER": extreme_challenger_loss,
         },
+        "bootstrap": {
+            "kind": "MOVING_DATE_BLOCK",
+            "gap_handling": "PRESERVE_MISSING_XSHG_SESSIONS",
+            "repetitions": BOOTSTRAP_REPETITIONS,
+            "block_length_sessions": BOOTSTRAP_BLOCK_LENGTH,
+            "confidence": 0.90,
+            "seed": P_BOOTSTRAP_SEED,
+        },
     }
 
 
@@ -414,19 +456,19 @@ def evaluate_qp_construction(frame: pd.DataFrame, *, p_core_passed: bool) -> dic
         }
     observable = frame.loc[frame["qp_status"].ne("UNOBSERVABLE")].copy()
     observable = observable.loc[observable["qp_status"].ne("NOT_APPLICABLE")].copy()
-    q_value = pd.to_numeric(observable["q_variance_h20"], errors="coerce")
-    p_value = pd.to_numeric(observable["p_primary_variance_h20"], errors="coerce")
-    p_low = pd.to_numeric(observable["p_interval_low_h20"], errors="coerce")
-    p_high = pd.to_numeric(observable["p_interval_high_h20"], errors="coerce")
-    gap = pd.to_numeric(observable["qp_variance_premium_h20"], errors="coerce")
-    gap_low = pd.to_numeric(observable["qp_interval_low_h20"], errors="coerce")
-    gap_high = pd.to_numeric(observable["qp_interval_high_h20"], errors="coerce")
+    q_value = pd.to_numeric(observable["q_total_variance_h20"], errors="coerce")
+    p_value = pd.to_numeric(observable["p_primary_total_variance_h20"], errors="coerce")
+    p_low = pd.to_numeric(observable["p_interval_total_low_h20"], errors="coerce")
+    p_high = pd.to_numeric(observable["p_interval_total_high_h20"], errors="coerce")
+    gap = pd.to_numeric(observable["qp_total_variance_premium_h20"], errors="coerce")
+    gap_low = pd.to_numeric(observable["qp_total_interval_low_h20"], errors="coerce")
+    gap_high = pd.to_numeric(observable["qp_total_interval_high_h20"], errors="coerce")
     checks = {
         "constructed_rows_nonzero": len(observable) > 0,
         "same_horizon": bool(set(observable["horizon_sessions"].astype(int)) == {20})
         if len(observable)
         else False,
-        "same_unit": bool(set(observable["unit"].astype(str)) == {"ANNUALIZED_VARIANCE"})
+        "same_unit": bool(set(observable["qp_unit"].astype(str)) == {"TOTAL_VARIANCE"})
         if len(observable)
         else False,
         "point_identity": bool(((gap - (q_value - p_value)).abs() <= 1e-12).all()),
@@ -449,37 +491,6 @@ def evaluate_qp_construction(frame: pd.DataFrame, *, p_core_passed: bool) -> dic
     }
 
 
-def _bootstrap_qp(
-    paired: pd.DataFrame,
-    metric: Callable[[pd.DataFrame], float | None],
-) -> float | None:
-    rng = np.random.default_rng(QP_BOOTSTRAP_SEED)
-    values: list[float] = []
-    for _ in range(BOOTSTRAP_REPETITIONS):
-        positions = _block_positions(
-            len(paired), block_length=BOOTSTRAP_BLOCK_LENGTH, rng=rng
-        )
-        value = metric(paired.iloc[positions])
-        if value is not None and np.isfinite(value):
-            values.append(value)
-    return float(np.quantile(values, 0.05)) if values else None
-
-
-def _qp_spearman(frame: pd.DataFrame) -> float | None:
-    return _spearman(
-        pd.to_numeric(frame["qp_variance_premium_h20"], errors="coerce"),
-        pd.to_numeric(frame["ex_post_q_minus_realized_h20"], errors="coerce"),
-    )
-
-
-def _qp_top_bottom(frame: pd.DataFrame) -> float | None:
-    percentile = pd.to_numeric(frame["qp_percentile_h20"], errors="coerce")
-    ex_post = pd.to_numeric(frame["ex_post_q_minus_realized_h20"], errors="coerce")
-    top = ex_post.loc[percentile >= 0.80]
-    bottom = ex_post.loc[percentile <= 0.20]
-    return float(top.mean() - bottom.mean()) if len(top) and len(bottom) else None
-
-
 def evaluate_qp_direction(frame: pd.DataFrame, *, p_core_passed: bool) -> dict[str, Any]:
     if not p_core_passed:
         return {"verdict": "NOT_APPLICABLE", "reason": "P_CORE_H20_NOT_PASS"}
@@ -487,58 +498,21 @@ def evaluate_qp_direction(frame: pd.DataFrame, *, p_core_passed: bool) -> dict[s
         _all_finite(
             frame,
             (
-                "qp_variance_premium_h20",
-                "ex_post_q_minus_realized_h20",
-                "qp_percentile_h20",
+                "qp_total_variance_premium_h20",
+                "ex_post_q_total_minus_realized_h20",
             ),
         )
     ].copy()
     p_opportunities = frame.loc[frame["p_evaluation_opportunity"].astype(bool)]
     q_available = p_opportunities["q_status"].eq("OK")
     q_coverage = float(q_available.mean()) if len(q_available) else 0.0
-    if len(paired) < 126:
-        return {
-            "verdict": "INSUFFICIENT_EVIDENCE",
-            "research_status": "QP_DIRECTION_NOT_VALIDATED",
-            "reason": "QP_DIRECTION_PAIRED_ROWS_BELOW_126",
-            "paired_rows": len(paired),
-            "q_availability_coverage": q_coverage,
-        }
-    correlation = _qp_spearman(paired)
-    difference = _qp_top_bottom(paired)
-    correlation_lower = _bootstrap_qp(paired, _qp_spearman)
-    difference_lower = _bootstrap_qp(paired, _qp_top_bottom)
-    sign_coverage = float(paired["qp_sign_confident_h20"].astype(bool).mean())
-    bootstrap_pass = bool(
-        (correlation_lower is not None and correlation_lower > 0)
-        or (difference_lower is not None and difference_lower > 0)
-    )
-    passed = bool(
-        correlation is not None
-        and correlation > 0
-        and difference is not None
-        and difference > 0
-        and bootstrap_pass
-        and sign_coverage >= 0.30
-    )
     return {
-        "verdict": "PASS" if passed else "FAIL",
-        "research_status": "QP_DIRECTION_VALIDATED"
-        if passed
-        else "QP_DIRECTION_NOT_VALIDATED",
-        "reason": "QP_DIRECTION_GATES_PASSED" if passed else "QP_DIRECTION_GATE_FAILED",
+        "verdict": "NOT_APPLICABLE",
+        "research_status": "QP_DIRECTION_NOT_IDENTIFIED",
+        "reason": "SHARED_Q_OUTCOME_NOT_IDENTIFYING",
         "paired_rows": len(paired),
-        "spearman": correlation,
-        "top_minus_bottom_quintile_mean": difference,
-        "spearman_bootstrap_lower_90": correlation_lower,
-        "top_minus_bottom_bootstrap_lower_90": difference_lower,
-        "sign_confident_coverage": sign_coverage,
         "q_availability_coverage": q_coverage,
-        "bootstrap": {
-            "kind": "MOVING_DATE_BLOCK",
-            "repetitions": BOOTSTRAP_REPETITIONS,
-            "block_length_sessions": BOOTSTRAP_BLOCK_LENGTH,
-            "confidence": 0.90,
-            "seed": QP_BOOTSTRAP_SEED,
-        },
+        "shared_q_direction_test_executed": False,
+        "incremental_q_test": "P_HAR_Q_CHALLENGER",
+        "timing_claimed": False,
     }

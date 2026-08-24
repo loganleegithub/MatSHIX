@@ -245,8 +245,8 @@ def _render_adjudication(
         f"- 分支：`{score['repository']['git_branch']}`",
         f"- 冻结 era：`{DEVELOPMENT_START.date()}` -> `{DEVELOPMENT_END.date()}`",
         "- 证据层：`RETROSPECTIVE_DEVELOPMENT / RESEARCH_ONLY`",
-        f"- 首次完整构建开始：`{score['execution']['started_at_utc']}`",
-        f"- 首次完整构建结束：`{score['execution']['ended_at_utc']}`",
+        f"- 3.0.1 修正构建开始：`{score['execution']['started_at_utc']}`",
+        f"- 3.0.1 修正构建结束：`{score['execution']['ended_at_utc']}`",
         f"- 命令：`{score['execution']['command']}`",
         f"- 开始时工作树干净：`{str(score['repository']['worktree_clean_at_start']).lower()}`",
         "- deterministic replay：`true`",
@@ -302,8 +302,9 @@ def _render_adjudication(
             "",
             "## 边界",
             "",
-            "Q 历史输入仅为 AETF 14:56 minute close，不是 bid/ask 或可成交 mid。Q−P 即使可构造，",
-            "也只是同期限方差补偿事实，不是卖方许可、错误定价或具体结构的预期收益。",
+            "Q 历史输入仅为 AETF 14:56 minute close，不是 bid/ask 或可成交 mid。Q−P 只按 absolute",
+            "total variance 构造；共享 Q 的方向相关检验不再执行。该事实不是卖方许可、错误定价",
+            "或具体结构的预期收益。",
             "",
         ]
     )
@@ -314,7 +315,7 @@ def _assert_clean_execution_branch(project: Path, provenance: dict[str, Any]) ->
     if provenance["git_branch"] != "codex/matshix-weather-v3":
         raise ValueError(f"unexpected V3 execution branch: {provenance['git_branch']}")
     if not provenance["worktree_clean_at_start"]:
-        raise ValueError("V3 first historical build requires a clean worktree")
+        raise ValueError("V3 corrective historical build requires a clean worktree")
     if provenance["main_sha"] != provenance["tracking_main_sha"]:
         raise ValueError("local main and tracking main differ before V3 execution")
 
@@ -427,7 +428,10 @@ def run_v3_research_build(
             "started_at_utc": started.isoformat(),
             "ended_at_utc": ended.isoformat(),
             "command": command,
-            "first_frozen_historical_build": True,
+            "first_frozen_historical_build": False,
+            "corrective_frozen_historical_build": True,
+            "supersedes_authority_version": "3.0.0",
+            "supersedes_candidate_commit": "c5b1d38fe2dcbafdfb3660e94751d7143cfc6ebc",
         },
         "deterministic_replay": {
             "passed": True,

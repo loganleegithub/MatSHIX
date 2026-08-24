@@ -1,8 +1,9 @@
 # MATSHIX V3 AUTHORITY
 
-- 状态：`HUMAN_FROZEN / EXECUTION_AUTHORIZED`
-- Authority 版本：`3.0.0`
+- 状态：`HUMAN_FROZEN / CORRECTIVE_EXECUTION_AUTHORIZED`
+- Authority 版本：`3.0.1`
 - 冻结时间：`2026-08-23T18:14:36Z`
+- 补充冻结时间：`2026-08-24T18:00:10Z`
 - 施工任务：`MATSHIX_WEATHER_STATION_V3_PHYSICAL_PRICING_DECOMPOSITION`
 - 施工分支：`codex/matshix-weather-v3`
 - 施工合同：`MATSHIX_V3_CONSTRUCTION_PLAN.md`
@@ -13,8 +14,23 @@
 - 首期载体：`CSI300_LOCAL / CSI300_510300 / 510300`
 
 本 Authority 只把已经获得人类施工授权的 V3 合同翻译成可执行字段、公式、Schema 语义和
-测试常量，不新增 target、feature、模型或验收门。任何超出本文的语义变化必须停止并取得新
-的人类决定。
+测试常量。3.0.1 是人类于 2026-08-25 授权的 confirmed-implementation-defect 补充版本：不改
+era、P 核心特征、模型族、seed、门槛或禁止策略输入边界，只修复单位、重变换、基线、抽样和
+识别缺陷。3.0.0 候选及其前向边界由本补充版本取代；旧预测不得回填或冒充 3.0.1 前向证据。
+任何超出本文的语义变化必须停止并取得新的人类决定。
+
+### 0.1 3.0.1 外部审查裁决
+
+| finding | 裁决 | 3.0.1 处理 |
+|---|---|---|
+| P 以 252/20 年化、Q 以 ACT/365F 年化后直接相减 | `CONFIRMED_DEFECT` | Q−P 改为同一 H20 的 absolute total variance；年化字段只作各自描述 |
+| log-target Ridge 直接 `exp(prediction)` | `CONFIRMED_DEFECT` | 只用当次因果训练窗 residual 计算 Duan smearing factor 后重变换 |
+| B0 使用几何均值 | `CONFIRMED_DEFECT` | QLIKE 常数基准改为当次成熟训练窗的算术均值 |
+| 14:56 minute close 不是同步 bid/ask midpoint | `KNOWN_DATA_LIMITATION` | 继续标记 `RESEARCH_MINUTE_CLOSE / formal_pit=false`，不得制造历史 midpoint |
+| `Q-P` 与 `Q-RV` 相关检验共享同一个 Q | `CONFIRMED_IDENTIFICATION_DEFECT` | 禁止把该相关性作为方向证据；Q 增量只由同日配对 HAR+Q Challenger 检验 |
+| Bootstrap 按过滤后的行号抽块 | `CONFIRMED_DEFECT` | 以 XSHG 交易日位置定义 20-session date block，保留块内缺口 |
+| `11:30 -> 13:05` 午休边界收益 | `NOT_A_DEFECT` | 作为间歇交易价格跳跃只计一次；无 13:00 mark 时不得拆分或插值 |
+| 缺少独立 scoring 单测 | `CONFIRMED_TEST_GAP` | 新增手算 QLIKE、日期块、总方差恒等式和识别边界测试 |
 
 ---
 
@@ -122,9 +138,12 @@ daily_total_variance[d] = daily_intraday_variance[d] + daily_overnight_variance[
 ### 3.2 V3 Primary outcome
 
 ```text
+rv_total_variance_h20[t]
+  = sum(daily_total_variance[d], d=t+1..t+20)
 rv_variance_h20[t]
-  = (252 / 20) * sum(daily_total_variance[d], d=t+1..t+20)
-unit = ANNUALIZED_VARIANCE
+  = (252 / 20) * rv_total_variance_h20[t]
+total unit = TOTAL_VARIANCE
+annualized unit = ANNUALIZED_VARIANCE
 ```
 
 20 个目标交易日必须全部完整；否则 outcome 为 null。目标开始日、结束日、可得时间、有效/预期
@@ -145,10 +164,10 @@ V3 只允许三个 P 候选：
 
 ```yaml
 B0_ROLLING_CLIMATOLOGY:
-  target: log(max(rv_variance_h20, 1e-12))
+  target: rv_variance_h20
   minimum_history: 252 outcome-complete rows
   maximum_history: 504 outcome-complete rows
-  output: exp(mean(log_target))
+  output: arithmetic_mean(target)
 
 B1_EWMA94:
   daily_input: daily_total_variance
@@ -167,6 +186,7 @@ P_PRIMARY_HAR:
     - log_rv_d1_lag1
     - log_mean_rv_d5_lag1
     - log_mean_rv_d22_lag1
+  retransformation: exp(log_prediction) * mean(exp(training_log_residual))
 ```
 
 EWMA 只用依次到达的有限正 daily input 更新；更早的数据缺口不以零更新。若 `t-1` 当日输入
@@ -183,6 +203,20 @@ log_mean_rv_d22_lag1 = log(252 * mean(daily_total_variance[t-22..t-1]))
 5 日或 22 日窗口任一交易日缺值时，相应当前特征为 null。每次拟合只在当次训练窗计算 feature
 median、mean 和 population standard deviation；先用训练窗 median impute，再标准化训练行和
 当前行。训练 median 缺失、标准差为零、非有限设计或非正 target 均发布 `UNOBSERVABLE`。
+
+log-target Ridge 的原尺度 point forecast 必须使用当次因果训练窗的 Duan smearing factor：
+
+```text
+fitted_log_i        = fitted value for training row i
+training_residual_i = log(rv_variance_h20[i]) - fitted_log_i
+smearing_factor_t   = mean(exp(training_residual_i))
+p_primary_variance_h20[t]
+  = exp(predicted_log_t) * smearing_factor_t
+```
+
+factor 必须有限且严格为正，并逐 forecast 写入 ledger。该 residual 只用于 point
+retransformation；第 4.2 节的预测区间仍只能读取先前成熟 OOF forecast error，禁止用当前拟合
+residual 构造区间。Challenger 服从同一重变换。
 
 P 的当前资格、训练资格和 opportunity 分母不得依赖 Q、H4、期权月份、wing、合约数量、
 策略机会或策略结果。
@@ -218,6 +252,10 @@ block_length_sessions = 20
 confidence = 90%
 seed = 2026082401
 ```
+
+`MOVING_DATE_BLOCK` 的 block 由 XSHG 日历中的连续 20 个 session 位置定义，再选取该日期窗内
+实际 eligible paired rows。缺失或被 censor 的 session 在块内保持缺口；不得把过滤后的相邻
+DataFrame 行当作相邻交易日。抽到的非空日期块拼接到原 paired-row 样本量，最后一块可截断。
 
 P opportunity 是：当前 H20 target 已完成，且当日已有至少 252 个因果可训练 target。Q/H4 不
 进入分母。paired 评价行要求 actual、P、B0、B1 均为有限正值。必须全部满足：
@@ -328,7 +366,7 @@ P_HAR_Q_CHALLENGER:
     - log_rv_d1_lag1
     - log_mean_rv_d5_lag1
     - log_mean_rv_d22_lag1
-    - log_q_variance_h20
+    - log_q_total_variance_h20
 ```
 
 训练、变换、target 可得性和 OOF 区间规则与主站相同。Challenger 训练行需要自身 exact H20 Q；
@@ -371,11 +409,21 @@ downside_price_shock + upside_price_shock
 只在 `P_CORE_H20=PASS` 且当日 P、因果 P interval 与 exact H20 Q 均有效时计算：
 
 ```text
-qp_variance_premium_h20  = q_variance_h20 - p_primary_variance_h20
-qp_interval_low          = q_variance_h20 - p_interval_high
-qp_interval_high         = q_variance_h20 - p_interval_low
-ex_post_q_minus_realized = q_variance_h20 - rv_variance_h20
+p_primary_total_variance_h20 = p_primary_variance_h20 * 20 / 252
+p_interval_total_low_h20      = p_interval_low_h20 * 20 / 252
+p_interval_total_high_h20     = p_interval_high_h20 * 20 / 252
+
+qp_total_variance_premium_h20 = q_total_variance_h20 - p_primary_total_variance_h20
+qp_total_interval_low_h20     = q_total_variance_h20 - p_interval_total_high_h20
+qp_total_interval_high_h20    = q_total_variance_h20 - p_interval_total_low_h20
+ex_post_q_total_minus_realized_h20
+  = q_total_variance_h20 - rv_total_variance_h20
+unit = TOTAL_VARIANCE
 ```
+
+禁止用 `q_variance_h20 - p_primary_variance_h20` 构造补偿：前者由 ACT/365F 年化，后者由
+252/20 年化，长假会把 clock basis 混入差值。Q、P 的年化字段继续保留用于各自模型解释，
+但 Q−P point、interval、percentile 和 ex-post 描述一律使用 absolute total variance。
 
 ```text
 THICK_COMPENSATION  qp_interval_low > 0
@@ -385,21 +433,19 @@ UNOBSERVABLE        Q, P or P interval unavailable
 NOT_APPLICABLE      P_CORE_H20 is not PASS
 ```
 
-历史输出标记 `RESEARCH_QP_ESTIMATE`。公式正确不等于择时有效，更不等于卖波动许可。方向研究门：
+历史输出标记 `RESEARCH_QP_ESTIMATE`。公式正确不等于择时有效，更不等于卖波动许可。
+3.0.0 的 `Spearman(Q-P, Q-RV)` 与 top-minus-bottom 检验共享当日 Q，因此不得作为独立方向
+识别：即使 Q 完全不含新的风险信息，共享项也会机械提高相关性。3.0.1 固定：
 
 ```text
-paired rows >= 126
-Spearman(qp_gap, ex_post_q_minus_realized) > 0
-causal top-minus-bottom quintile mean difference > 0
-90% moving-date-block bootstrap lower bound > 0 for at least one statistic
-sign-confident coverage >= 30%
-Q availability coverage separately disclosed
-bootstrap repetitions = 2000
-block length = 20 sessions
-seed = 2026082403
+QP_DIRECTION_RESEARCH.verdict = NOT_APPLICABLE
+QP_DIRECTION_RESEARCH.reason  = SHARED_Q_OUTCOME_NOT_IDENTIFYING
+shared_q_direction_test_executed = false
 ```
 
-方向门未通过为 `QP_DIRECTION_NOT_VALIDATED`；不回写 P/Q，不改变公式事实。
+Q 对未来 realized variance 是否有独立增量，只由第 6 节同日配对 HAR+Q Challenger 相对纯 HAR
+的 QLIKE、bootstrap、bias、interval 与 extreme 门回答。任何卖波动择时/收益方向需另立包含真实
+可成交价格、成本和独立 outcome 的策略 Authority；本 Authority 不读取该数据。
 
 ---
 
@@ -505,6 +551,12 @@ FORWARD_Q 服从第 5.2 节全部门。样本不足保持 `INSUFFICIENT_EVIDENCE
 | `V3-TARGET-001` | 以 `move > q_expected_move` 定义的 H10 标签不是纯 P target | 核心仅保留连续 H20 realized variance |
 | `V3-Q-001` | V1 tenor 可使用 nearest-expiry proxy，不满足 exact H20 Q | V3 Q 只用 exact bracket total-variance interpolation |
 | `V3-ARCH-001` | V2 把物理风险、期权定价和补偿混在单一主模型/资格链 | 拆成 P、Q、Q−P 与隔离 Challenger |
+| `V3-UNIT-001` | 3.0.0 将 ACT/365F Q 与 252/20 P 年化后直接相减 | Q−P 只用同期限 absolute total variance |
+| `V3-P-005` | 3.0.0 log-target Ridge 直接取指数，输出条件中位数尺度 | 因果训练窗 Duan smearing retransformation |
+| `V3-B0-001` | 3.0.0 B0 为几何均值，不是 QLIKE 最优常数 | 成熟训练窗算术均值 |
+| `V3-STAT-001` | 3.0.0 moving block 在筛选后行号上跨越交易日缺口 | XSHG 20-session date blocks 保留缺口 |
+| `V3-IDENT-001` | 3.0.0 方向检验的 signal/outcome 共享 Q | 移除伪识别；Q 增量只看独立 Challenger |
+| `V3-TEST-001` | 3.0.0 缺少 scoring 原语的独立手算测试 | 新增 scoring 边界单测 |
 
 经审计可函数级移植但必须重新测试的部分：
 
@@ -520,11 +572,16 @@ in-sample interval 或策略链。
 
 ---
 
-## 13. 一次冻结历史裁决
+## 13. 冻结历史裁决与缺陷修正版
 
 Authority 必须先纯文档提交；实现和测试分别提交后，才运行第一次完整历史构建。该次结果就是
 本 Authority 的回顾性裁决。结果出现后不得改 era、feature、model、seed、门槛或删除日期重跑
 冲关。
 
-若发现 confirmed implementation defect，先保存原失败产物与 hash，说明影响范围并冻结补充
+若发现 confirmed implementation defect，先保存原产物与 hash，说明影响范围并冻结补充
 Authority，之后才允许新版本重跑。统计 FAIL 或证据不足不是实现缺陷，也不是降门授权。
+
+3.0.0 原产物已由 Git 提交 `d654566fa1fc961665481f03209b6d0c7d45efb1` 和候选提交
+`c5b1d38fe2dcbafdfb3660e94751d7143cfc6ebc` 保存。3.0.1 只允许一次 corrective frozen
+historical adjudication；不得复用 3.0.0 的 PASS、预测或前向起点。若修正后的任何核心门 FAIL
+或证据不足，停止在对应层并保存新失败 hash，不得恢复 3.0.0 候选或降门冲关。

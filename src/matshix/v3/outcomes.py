@@ -20,6 +20,7 @@ from matshix.v3.authority import (
     ECONOMIC_INDEX_ID,
     HORIZON_SESSIONS,
     PATH_HORIZON_SESSIONS,
+    TRADING_DAYS_PER_YEAR,
     UNDERLYING_SYMBOL,
 )
 
@@ -252,6 +253,7 @@ def build_outcome_ledger(
             "economic_index_id": ECONOMIC_INDEX_ID,
             "horizon_sessions": HORIZON_SESSIONS,
             "unit": "ANNUALIZED_VARIANCE",
+            "total_variance_unit": "TOTAL_VARIANCE",
             "evidence_kind": "RETROSPECTIVE_DEVELOPMENT",
             "evidence_tier": "RESEARCH_ONLY",
             "authority_version": AUTHORITY_VERSION,
@@ -261,8 +263,9 @@ def build_outcome_ledger(
             complete_rows = [value for value in target_rows if value is not None]
             intraday = sum(float(value["daily_intraday_variance"]) for value in complete_rows)
             overnight = sum(float(value["daily_overnight_variance"]) for value in complete_rows)
-            rv_intraday = 252.0 / HORIZON_SESSIONS * intraday
-            rv_overnight = 252.0 / HORIZON_SESSIONS * overnight
+            total_variance = intraday + overnight
+            rv_intraday = TRADING_DAYS_PER_YEAR / HORIZON_SESSIONS * intraday
+            rv_overnight = TRADING_DAYS_PER_YEAR / HORIZON_SESSIONS * overnight
             variance = rv_intraday + rv_overnight
             primary_status = "OBSERVED"
             valid_bar_count = sum(int(value["valid_bar_count"]) for value in complete_rows)
@@ -277,6 +280,7 @@ def build_outcome_ledger(
         else:
             rv_intraday = math.nan
             rv_overnight = math.nan
+            total_variance = math.nan
             variance = math.nan
             primary_status = "CENSORED"
             valid_bar_count = 0
@@ -298,6 +302,7 @@ def build_outcome_ledger(
         rows.append(
             {
                 **common,
+                "rv_total_variance_h20": total_variance,
                 "rv_variance_h20": variance,
                 "rv_intraday_h20": rv_intraday,
                 "rv_overnight_h20": rv_overnight,

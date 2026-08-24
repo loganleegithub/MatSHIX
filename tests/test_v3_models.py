@@ -11,7 +11,11 @@ import pandas as pd
 import pytest
 
 from matshix.v3.authority import CHALLENGER_FEATURES, FORBIDDEN_MODEL_FIELDS, HAR_FEATURES
-from matshix.v3.models import add_physical_forecasts, add_qp_ledger_fields
+from matshix.v3.models import (
+    _duan_smearing_factor,
+    add_physical_forecasts,
+    add_qp_ledger_fields,
+)
 
 
 def _model_frame(rows: int = 410, *, q_available: bool = False) -> pd.DataFrame:
@@ -25,12 +29,15 @@ def _model_frame(rows: int = 410, *, q_available: bool = False) -> pd.DataFrame:
         days=1, hours=9
     )
     q_variance = 0.045 + 0.002 * np.cos(values / 13.0)
+    target_year_fraction = np.full(rows, 30.0 / 365.0)
+    q_total_variance = q_variance * target_year_fraction
     return pd.DataFrame(
         {
             "forecast_session": dates,
             "known_at": known,
             "outcome_available_at": available,
             "rv_variance_h20": actual,
+            "rv_total_variance_h20": actual * 20.0 / 252.0,
             "outcome_status": "OBSERVED",
             "log_rv_d1_lag1": -3.5 + 0.1 * np.sin(values / 11.0),
             "log_mean_rv_d5_lag1": -3.4 + 0.1 * np.cos(values / 19.0),
@@ -38,7 +45,10 @@ def _model_frame(rows: int = 410, *, q_available: bool = False) -> pd.DataFrame:
             "p_b1_ewma94_variance_h20": 0.037 + 0.001 * np.sin(values / 23.0),
             "q_status": "OK" if q_available else "NO_EXACT_BRACKET",
             "q_variance_h20": q_variance if q_available else np.nan,
-            "log_q_variance_h20": np.log(q_variance) if q_available else np.nan,
+            "q_total_variance_h20": q_total_variance if q_available else np.nan,
+            "log_q_total_variance_h20": (
+                np.log(q_total_variance) if q_available else np.nan
+            ),
         }
     )
 
@@ -50,6 +60,10 @@ def test_p_primary_attends_when_q_and_h4_are_entirely_missing() -> None:
     assert row["p_publish_opportunity"]
     assert row["p_model_status"] == "RETROSPECTIVE_SCORE"
     assert row["p_primary_variance_h20"] > 0
+    assert row["p_primary_smearing_factor_h20"] >= 1.0
+    assert row["p_primary_total_variance_h20"] == pytest.approx(
+        row["p_primary_variance_h20"] * 20.0 / 252.0
+    )
     assert row["challenger_model_status"] == "UNOBSERVABLE_Q"
     assert not any(field in result.columns for field in FORBIDDEN_MODEL_FIELDS[:5])
 
@@ -80,26 +94,44 @@ def test_frozen_models_and_deterministic_replay_are_exact() -> None:
         "log_mean_rv_d5_lag1",
         "log_mean_rv_d22_lag1",
     )
-    assert CHALLENGER_FEATURES == (*HAR_FEATURES, "log_q_variance_h20")
+    assert CHALLENGER_FEATURES == (*HAR_FEATURES, "log_q_total_variance_h20")
     assert not set(CHALLENGER_FEATURES).intersection(FORBIDDEN_MODEL_FIELDS)
 
 
-def test_qp_h20_point_and_interval_identities_are_exact() -> None:
+def test_duan_smearing_and_qlike_climatology_retransform_to_mean_scale() -> None:
+    residuals = np.log(np.asarray([0.5, 2.0]))
+    assert _duan_smearing_factor(residuals) == pytest.approx(1.25)
+
+    frame = _model_frame(q_available=False)
+    result = add_physical_forecasts(frame)
+    expected_b0 = frame.loc[:299, "rv_variance_h20"].mean()
+    assert result.loc[300, "p_b0_climatology_variance_h20"] == pytest.approx(expected_b0)
+
+
+def test_qp_h20_uses_total_variance_and_avoids_holiday_clock_sign_flip() -> None:
+    q_total = 0.004
+    q_act365_annualized = q_total / (39.0 / 365.0)
+    p_annualized = 0.04
+    p_total = p_annualized * 20.0 / 252.0
     frame = pd.DataFrame(
         {
-            "q_variance_h20": [0.05, np.nan],
-            "p_primary_variance_h20": [0.03, 0.03],
-            "p_interval_low_h20": [0.02, 0.02],
-            "p_interval_high_h20": [0.04, 0.04],
-            "rv_variance_h20": [0.035, 0.035],
+            "q_variance_h20": [q_act365_annualized, np.nan],
+            "q_total_variance_h20": [q_total, np.nan],
+            "p_primary_variance_h20": [p_annualized, p_annualized],
+            "p_primary_total_variance_h20": [p_total, p_total],
+            "p_interval_total_low_h20": [0.003, 0.003],
+            "p_interval_total_high_h20": [0.0035, 0.0035],
+            "rv_total_variance_h20": [0.0032, 0.0032],
         }
     )
     result = add_qp_ledger_fields(frame, p_core_passed=True)
-    assert result.loc[0, "qp_variance_premium_h20"] == pytest.approx(0.02)
-    assert result.loc[0, "qp_interval_low_h20"] == pytest.approx(0.01)
-    assert result.loc[0, "qp_interval_high_h20"] == pytest.approx(0.03)
-    assert result.loc[0, "ex_post_q_minus_realized_h20"] == pytest.approx(0.015)
+    assert q_act365_annualized - p_annualized < 0
+    assert result.loc[0, "qp_total_variance_premium_h20"] == pytest.approx(q_total - p_total)
+    assert result.loc[0, "qp_total_interval_low_h20"] == pytest.approx(0.0005)
+    assert result.loc[0, "qp_total_interval_high_h20"] == pytest.approx(0.001)
+    assert result.loc[0, "ex_post_q_total_minus_realized_h20"] == pytest.approx(0.0008)
     assert result.loc[0, "qp_status"] == "THICK_COMPENSATION"
+    assert result.loc[0, "qp_unit"] == "TOTAL_VARIANCE"
     assert result.loc[1, "qp_status"] == "UNOBSERVABLE"
 
 

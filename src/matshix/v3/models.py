@@ -13,6 +13,8 @@ from matshix.v3.authority import (
     AUTHORITY_VERSION,
     CHALLENGER_FEATURES,
     HAR_FEATURES,
+    HORIZON_SESSIONS,
+    TRADING_DAYS_PER_YEAR,
 )
 
 
@@ -77,8 +79,10 @@ def build_model_frame(
         validate="one_to_one",
     )
     frame = frame.merge(q_fields, on="forecast_session", how="left", validate="one_to_one")
-    q_variance = pd.to_numeric(frame["q_variance_h20"], errors="coerce")
-    frame["log_q_variance_h20"] = np.log(q_variance).where(q_variance.gt(0))
+    q_total_variance = pd.to_numeric(frame["q_total_variance_h20"], errors="coerce")
+    frame["log_q_total_variance_h20"] = np.log(q_total_variance).where(
+        q_total_variance.gt(0)
+    )
     frame["authority_version"] = AUTHORITY_VERSION
     frame["authority_sha256"] = AUTHORITY_SHA256
     frame["physical_model"] = "P_PRIMARY_HAR"
@@ -110,27 +114,39 @@ def _prepare_design(
     return x_train, x_current
 
 
+def _duan_smearing_factor(log_residuals: np.ndarray) -> float | None:
+    residuals = np.asarray(log_residuals, dtype=float)
+    if residuals.ndim != 1 or len(residuals) == 0 or not np.isfinite(residuals).all():
+        return None
+    factor = float(np.exp(residuals).mean())
+    return factor if np.isfinite(factor) and factor > 0 else None
+
+
 def ridge_forecast(
     training: pd.DataFrame,
     current: pd.Series,
     *,
     features: tuple[str, ...],
-) -> tuple[float | None, str]:
+) -> tuple[float | None, float | None, str]:
     if len(training) < 252:
-        return None, "INSUFFICIENT_HISTORY"
+        return None, None, "INSUFFICIENT_HISTORY"
     prepared = _prepare_design(training, current, features)
     if prepared is None:
-        return None, "UNOBSERVABLE"
+        return None, None, "UNOBSERVABLE"
     target = pd.to_numeric(training["rv_variance_h20"], errors="coerce").to_numpy(dtype=float)
     if not np.isfinite(target).all() or np.any(target <= 0):
-        return None, "UNOBSERVABLE"
+        return None, None, "UNOBSERVABLE"
     x_train, x_current = prepared
+    log_target = np.log(np.maximum(target, 1e-12))
     model = Ridge(alpha=1.0)
-    model.fit(x_train, np.log(np.maximum(target, 1e-12)))
-    prediction = math.exp(float(model.predict(x_current)[0]))
+    model.fit(x_train, log_target)
+    smearing_factor = _duan_smearing_factor(log_target - model.predict(x_train))
+    if smearing_factor is None:
+        return None, None, "UNOBSERVABLE"
+    prediction = math.exp(float(model.predict(x_current)[0])) * smearing_factor
     if not np.isfinite(prediction) or prediction <= 0:
-        return None, "UNOBSERVABLE"
-    return prediction, "RETROSPECTIVE_SCORE"
+        return None, None, "UNOBSERVABLE"
+    return prediction, smearing_factor, "RETROSPECTIVE_SCORE"
 
 
 def _mature_training(frame: pd.DataFrame, position: int) -> pd.DataFrame:
@@ -197,11 +213,19 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
     numeric_fields = (
         "p_b0_climatology_variance_h20",
         "p_primary_variance_h20",
+        "p_primary_smearing_factor_h20",
         "p_interval_low_h20",
         "p_interval_high_h20",
         "p_challenger_variance_h20",
+        "p_challenger_smearing_factor_h20",
         "p_challenger_interval_low_h20",
         "p_challenger_interval_high_h20",
+        "p_primary_total_variance_h20",
+        "p_interval_total_low_h20",
+        "p_interval_total_high_h20",
+        "p_challenger_total_variance_h20",
+        "p_challenger_interval_total_low_h20",
+        "p_challenger_interval_total_high_h20",
         "causal_extreme_threshold_h20",
     )
     for field in numeric_fields:
@@ -232,13 +256,16 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
                 training.tail(504)["rv_variance_h20"], errors="coerce"
             )
             if climatology.notna().all() and climatology.gt(0).all():
-                result.at[position, "p_b0_climatology_variance_h20"] = math.exp(
-                    float(np.log(climatology.to_numpy(dtype=float)).mean())
+                result.at[position, "p_b0_climatology_variance_h20"] = float(
+                    climatology.mean()
                 )
-            forecast, status = ridge_forecast(training, current, features=HAR_FEATURES)
+            forecast, smearing_factor, status = ridge_forecast(
+                training, current, features=HAR_FEATURES
+            )
             result.at[position, "p_model_status"] = status
             if forecast is not None:
                 result.at[position, "p_primary_variance_h20"] = forecast
+                result.at[position, "p_primary_smearing_factor_h20"] = smearing_factor
                 _set_interval(
                     result,
                     position,
@@ -262,7 +289,7 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
 
         exact_training = training.loc[training["q_status"].eq("OK")].copy()
         current_exact_q = current.get("q_status") == "OK" and pd.notna(
-            current.get("log_q_variance_h20")
+            current.get("log_q_total_variance_h20")
         )
         challenger_publish = bool(current_exact_q and len(exact_training) >= 252)
         result.at[position, "challenger_publish_opportunity"] = challenger_publish
@@ -270,7 +297,7 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
             challenger_publish and observed_current
         )
         if current_exact_q:
-            forecast, status = ridge_forecast(
+            forecast, smearing_factor, status = ridge_forecast(
                 exact_training,
                 current,
                 features=CHALLENGER_FEATURES,
@@ -278,6 +305,7 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
             result.at[position, "challenger_model_status"] = status
             if forecast is not None:
                 result.at[position, "p_challenger_variance_h20"] = forecast
+                result.at[position, "p_challenger_smearing_factor_h20"] = smearing_factor
                 _set_interval(
                     result,
                     position,
@@ -288,16 +316,26 @@ def add_physical_forecasts(frame: pd.DataFrame) -> pd.DataFrame:
                 )
         elif publish_opportunity:
             result.at[position, "challenger_model_status"] = "UNOBSERVABLE_Q"
+    total_scale = HORIZON_SESSIONS / TRADING_DAYS_PER_YEAR
+    for annualized_field, total_field in (
+        ("p_primary_variance_h20", "p_primary_total_variance_h20"),
+        ("p_interval_low_h20", "p_interval_total_low_h20"),
+        ("p_interval_high_h20", "p_interval_total_high_h20"),
+        ("p_challenger_variance_h20", "p_challenger_total_variance_h20"),
+        ("p_challenger_interval_low_h20", "p_challenger_interval_total_low_h20"),
+        ("p_challenger_interval_high_h20", "p_challenger_interval_total_high_h20"),
+    ):
+        result[total_field] = pd.to_numeric(result[annualized_field], errors="coerce") * total_scale
     return result
 
 
 def add_qp_ledger_fields(frame: pd.DataFrame, *, p_core_passed: bool) -> pd.DataFrame:
     result = frame.copy()
     fields = (
-        "qp_variance_premium_h20",
-        "qp_interval_low_h20",
-        "qp_interval_high_h20",
-        "ex_post_q_minus_realized_h20",
+        "qp_total_variance_premium_h20",
+        "qp_total_interval_low_h20",
+        "qp_total_interval_high_h20",
+        "ex_post_q_total_minus_realized_h20",
     )
     for field in fields:
         result[field] = math.nan
@@ -306,28 +344,32 @@ def add_qp_ledger_fields(frame: pd.DataFrame, *, p_core_passed: bool) -> pd.Data
         result["qp_evidence_tier"] = "RESEARCH_QP_ESTIMATE"
         result["qp_percentile_h20"] = math.nan
         result["qp_sign_confident_h20"] = False
+        result["qp_unit"] = "TOTAL_VARIANCE"
         return result
 
-    q_variance = pd.to_numeric(result["q_variance_h20"], errors="coerce")
-    p_variance = pd.to_numeric(result["p_primary_variance_h20"], errors="coerce")
-    p_low = pd.to_numeric(result["p_interval_low_h20"], errors="coerce")
-    p_high = pd.to_numeric(result["p_interval_high_h20"], errors="coerce")
-    actual = pd.to_numeric(result["rv_variance_h20"], errors="coerce")
-    observable = q_variance.notna() & p_variance.notna() & p_low.notna() & p_high.notna()
-    result.loc[observable, "qp_variance_premium_h20"] = q_variance - p_variance
-    result.loc[observable, "qp_interval_low_h20"] = q_variance - p_high
-    result.loc[observable, "qp_interval_high_h20"] = q_variance - p_low
-    ex_post_observable = observable & actual.notna()
-    result.loc[ex_post_observable, "ex_post_q_minus_realized_h20"] = q_variance - actual
-    low = pd.to_numeric(result["qp_interval_low_h20"], errors="coerce")
-    high = pd.to_numeric(result["qp_interval_high_h20"], errors="coerce")
+    q_total = pd.to_numeric(result["q_total_variance_h20"], errors="coerce")
+    p_total = pd.to_numeric(result["p_primary_total_variance_h20"], errors="coerce")
+    p_total_low = pd.to_numeric(result["p_interval_total_low_h20"], errors="coerce")
+    p_total_high = pd.to_numeric(result["p_interval_total_high_h20"], errors="coerce")
+    actual_total = pd.to_numeric(result["rv_total_variance_h20"], errors="coerce")
+    observable = q_total.notna() & p_total.notna() & p_total_low.notna() & p_total_high.notna()
+    result.loc[observable, "qp_total_variance_premium_h20"] = q_total - p_total
+    result.loc[observable, "qp_total_interval_low_h20"] = q_total - p_total_high
+    result.loc[observable, "qp_total_interval_high_h20"] = q_total - p_total_low
+    ex_post_observable = observable & actual_total.notna()
+    result.loc[ex_post_observable, "ex_post_q_total_minus_realized_h20"] = (
+        q_total - actual_total
+    )
+    low = pd.to_numeric(result["qp_total_interval_low_h20"], errors="coerce")
+    high = pd.to_numeric(result["qp_total_interval_high_h20"], errors="coerce")
     result["qp_status"] = "UNOBSERVABLE"
     result.loc[observable & low.gt(0), "qp_status"] = "THICK_COMPENSATION"
     result.loc[observable & high.lt(0), "qp_status"] = "THIN_COMPENSATION"
     result.loc[observable & low.le(0) & high.ge(0), "qp_status"] = "UNCERTAIN"
     result["qp_evidence_tier"] = "RESEARCH_QP_ESTIMATE"
+    result["qp_unit"] = "TOTAL_VARIANCE"
     result["qp_percentile_h20"] = rolling_midrank_percentile(
-        pd.to_numeric(result["qp_variance_premium_h20"], errors="coerce"),
+        pd.to_numeric(result["qp_total_variance_premium_h20"], errors="coerce"),
         reference_sessions=504,
         minimum_valid=126,
     )
@@ -350,16 +392,21 @@ def project_qp_ledger(frame: pd.DataFrame) -> pd.DataFrame:
         "p_primary_variance_h20",
         "p_interval_low_h20",
         "p_interval_high_h20",
+        "p_primary_total_variance_h20",
+        "p_interval_total_low_h20",
+        "p_interval_total_high_h20",
         "q_variance_h20",
         "q_total_variance_h20",
         "target_year_fraction",
-        "qp_variance_premium_h20",
-        "qp_interval_low_h20",
-        "qp_interval_high_h20",
-        "ex_post_q_minus_realized_h20",
+        "rv_total_variance_h20",
+        "qp_total_variance_premium_h20",
+        "qp_total_interval_low_h20",
+        "qp_total_interval_high_h20",
+        "ex_post_q_total_minus_realized_h20",
         "qp_percentile_h20",
         "qp_sign_confident_h20",
         "qp_status",
+        "qp_unit",
         "qp_evidence_tier",
         "authority_version",
         "authority_sha256",

@@ -70,6 +70,20 @@ def test_v3_missing_five_minute_endpoint_censors_whole_day() -> None:
     assert "MISSING_5M_ENDPOINT" in daily.iloc[0]["issues"]
 
 
+def test_v3_lunch_boundary_jump_is_counted_once_without_inventing_a_1300_mark() -> None:
+    sessions = exchange_sessions_in_range("2023-06-01", "2023-06-02")
+    first = _minute_day(sessions[0], start_mark=1.0, step=0.0)
+    second = _minute_day(sessions[1], start_mark=1.0, step=0.0)
+    lunch_jump = 0.02
+    for row in second:
+        if str(row["time"]) >= "13:05:00":
+            row["adjusted_mark"] = math.exp(lunch_jump)
+    daily, _ = build_daily_realized_inputs(pd.DataFrame(first + second))
+    row = daily.iloc[1]
+    assert row["valid_bar_count"] == EXPECTED_INTRADAY_RETURNS
+    assert row["daily_intraday_variance"] == pytest.approx(lunch_jump**2)
+
+
 def _outcome_fixture() -> tuple[pd.DataFrame, dict[pd.Timestamp, object], pd.Timestamp]:
     sessions = exchange_sessions_in_range("2023-05-31", "2023-08-31")
     rows: list[dict[str, object]] = []
@@ -97,6 +111,10 @@ def test_v3_h20_outcome_uses_exchange_sessions_and_has_continuous_h10_facts() ->
     assert row["target_end_session"] == target[-1]
     assert row["outcome_status"] == "OBSERVED"
     assert row["valid_bar_count"] == 20 * EXPECTED_INTRADAY_RETURNS
+    assert row["rv_total_variance_h20"] > 0
+    assert row["rv_variance_h20"] == pytest.approx(
+        row["rv_total_variance_h20"] * 252.0 / 20.0
+    )
     assert row["rv_variance_h20"] > 0
     assert row["max_up_log_move_h10"] >= 0
     assert row["max_down_log_move_h10"] >= 0
