@@ -1,21 +1,27 @@
 {
-  "freeze_version": "3.0.0",
-  "candidate_id": "MATSHIX_V3_CSI300_H20_2026_08_24",
+  "freeze_version": "3.0.1",
+  "candidate_id": "MATSHIX_V3_CSI300_H20_2026_08_25_CORRECTED",
   "status": "V3_CANDIDATE_FROZEN",
-  "frozen_at_utc": "2026-08-23T18:34:13Z",
+  "frozen_at_utc": "2026-08-24T18:13:42Z",
   "carrier_scope": "CSI300_510300",
   "economic_index_id": "CSI300",
   "underlying": "510300",
+  "supersedes": {
+    "candidate_id": "MATSHIX_V3_CSI300_H20_2026_08_24",
+    "candidate_commit": "c5b1d38fe2dcbafdfb3660e94751d7143cfc6ebc",
+    "reason": "CONFIRMED_MATH_AND_IDENTIFICATION_DEFECTS",
+    "old_forward_evidence_reused": false
+  },
   "authority": {
     "document": "MATSHIX_V3_AUTHORITY.md",
-    "version": "3.0.0",
-    "sha256": "01bb4a250da9bf6d738f17e5345ff7b2370c5315ad092b2c2cf3741d4114f454"
+    "version": "3.0.1",
+    "sha256": "6e7c8234306b715d0514a247c8880ff761aa2a7b71684b3e3e427c9ca401ba95"
   },
   "repository": {
     "branch": "codex/matshix-weather-v3",
-    "candidate_runtime_commit": "c2c759e7cfe75adf8568f70733e94b02e22748d2",
-    "historical_evidence_commit": "d654566fa1fc961665481f03209b6d0c7d45efb1",
-    "freeze_parent_commit": "d654566fa1fc961665481f03209b6d0c7d45efb1",
+    "candidate_runtime_commit": "d68710a1186708a6cdd646028e0ee80994b5f4c5",
+    "historical_evidence_commit": "1ed72567a85cde4237eebd3f90cfddeea37d3b98",
+    "freeze_parent_commit": "1ed72567a85cde4237eebd3f90cfddeea37d3b98",
     "main_contract_commit": "f69b3a25b70c667d4c8c1e0e5d0a21981e40e38d",
     "v2_archive_merged": false
   },
@@ -27,9 +33,9 @@
       "2020-01-02",
       "2026-06-05"
     ],
-    "development_score_sha256": "59b5fd19aa7ad4b6944bd9a62a623725dabbe888f38ea806bb300a66224816ca",
-    "adjudication_sha256": "1c6e4ac37ed337f12efad4c9147f054aef22fda2e9ff8a7950f40cf24dea0fb5",
-    "failure_ledger_sha256": "18232e29363961ed264fc8c6cb9acf174de587e66d5bcf4675d878d47510815b",
+    "development_score_sha256": "fe08ed1cb3ddf91bdd089dbd00cd6ebb1dadee8338f973bafa63c93cd02015d0",
+    "adjudication_sha256": "e38aa4f18ebee44963872493668932982728bdb73f3f1e59bc09b6bb2fe46a5e",
+    "failure_ledger_sha256": "26bfaf8f464e96acc2c4f4f6eb905470086a5ff8308e0573e0c5cb46590548d2",
     "deterministic_replay": true,
     "core_dimensions": {
       "ENGINEERING": "PASS",
@@ -40,7 +46,7 @@
     },
     "non_core_dimensions": {
       "P_HAR_Q_CHALLENGER": "FAIL_REJECTED_CHALLENGER",
-      "QP_DIRECTION_RESEARCH": "FAIL_QP_DIRECTION_NOT_VALIDATED"
+      "QP_DIRECTION_RESEARCH": "NOT_APPLICABLE_SHARED_Q_OUTCOME_NOT_IDENTIFYING"
     }
   },
   "candidate_models": {
@@ -58,18 +64,20 @@
       ],
       "depends_on_q": false,
       "depends_on_h4": false,
+      "retransformation": "DUAN_SMEARING_FROM_CAUSAL_TRAINING_RESIDUALS",
       "interval": "prior 126..504 matured OOF log errors at empirical 10%/90%",
       "accepted_historical": true
     },
     "baselines": {
-      "B0_ROLLING_CLIMATOLOGY": "exp(mean(last 252..504 matured log targets))",
+      "B0_ROLLING_CLIMATOLOGY": "arithmetic mean(last 252..504 matured targets)",
       "B1_EWMA94": "252 * prior-session EWMA(0.94, daily_total_variance)"
     },
     "excluded_challenger": {
       "model_id": "P_HAR_Q_CHALLENGER",
       "status": "REJECTED_CHALLENGER",
-      "paired_qlike_skill_vs_primary": -0.09221892930142017,
-      "bootstrap_skill_lower_90": -0.1322654535488541,
+      "q_feature": "log_q_total_variance_h20",
+      "paired_qlike_skill_vs_primary": -0.008913712985534783,
+      "bootstrap_skill_lower_90": -0.03880944815770053,
       "published_or_promoted": false
     }
   },
@@ -86,24 +94,26 @@
   },
   "candidate_qp": {
     "model_id": "Q_MINUS_P_H20",
-    "point_formula": "q_variance_h20 - p_primary_variance_h20",
+    "unit": "TOTAL_VARIANCE",
+    "point_formula": "q_total_variance_h20 - p_primary_total_variance_h20",
     "interval_formula": [
-      "q_variance_h20 - p_interval_high",
-      "q_variance_h20 - p_interval_low"
+      "q_total_variance_h20 - p_interval_total_high_h20",
+      "q_total_variance_h20 - p_interval_total_low_h20"
     ],
     "historical_evidence_tier": "RESEARCH_QP_ESTIMATE",
     "construction_integrity": "PASS",
-    "direction_research": "QP_DIRECTION_NOT_VALIDATED",
+    "direction_research": "NOT_APPLICABLE_SHARED_Q_OUTCOME_NOT_IDENTIFYING",
+    "shared_q_direction_test_executed": false,
     "trading_signal_claimed": false
   },
   "frozen_source_hashes": {
     "src/matshix/v3/__init__.py": "77c0053cba4d11d8c0b8a51cf099d00f3b551aae9ad10cf6d1eb570151c05d90",
-    "src/matshix/v3/authority.py": "f30c50e4ffb9b4a99a014076d34a2ec8214370acf85be671485e6961e118b537",
-    "src/matshix/v3/build.py": "f964498463f6131ed36777e55947befff487815359192f156c265a76463b5d6a",
-    "src/matshix/v3/models.py": "72658304946022b78059e1ffdd783260410f14fbaef24546fb38d87aa2293f48",
-    "src/matshix/v3/outcomes.py": "c497a595b176a86fd25c8117b20dcb8f15fe6fd55f114a1aafcb0e4e38bb5ba1",
+    "src/matshix/v3/authority.py": "44160ae994ddd08be2afa1963e34f9f1396da0dff74b9ee3b2d95ee838063093",
+    "src/matshix/v3/build.py": "ae7d7dea02ea11299cec05fa23b2e0f36312ad143942318fb61f5e5bdaf5970a",
+    "src/matshix/v3/models.py": "e9d80896b96cc88fe00493a79321b58411238141a4fdd97284ad16fb5f671357",
+    "src/matshix/v3/outcomes.py": "717c3c976217e6e97e37fa021337c905b669f85b0e66596c5a8a90b5708341c8",
     "src/matshix/v3/q_weather.py": "bd89c5bad92155bb8eef91ba9f49ce2f75fcd0ac04072604dd11dc0f856c6fcf",
-    "src/matshix/v3/scoring.py": "466288143c13f5a673343debed1cbd82eb101464374189c3b6a6c5025b5a8119",
+    "src/matshix/v3/scoring.py": "edcab65411250b467acbf5adc9d9f554d5980d982ac296b2f509b856bbe028d9",
     "src/matshix/surface/research.py": "c887861b2e9701ed97d55b7a94ad84fe48ab0a68e36cf58ae526de2187d52043",
     "src/matshix/surface/black.py": "be693eb6b13b298a90a7efc8ae05382a29bcc8a93c41d4669da3bfe874ac6670",
     "src/matshix/surface/tenor.py": "0877cc6d13efcead4fc385486e573c2632796803d7e3c15b6519d4086b45dc0e",
@@ -118,38 +128,39 @@
     "requirements-dev.lock": "44850ccdbe3a5ab4a569f1ba673a36eaefc104b3cc21aa19fabddb38095f9c91"
   },
   "frozen_test_hashes": {
-    "tests/test_v3_models.py": "675606fa3923d2a432a14d03c85dc85ac9ee7e743eb0e2292e22a76b9ae4918e",
-    "tests/test_v3_outcomes.py": "dff0f72e02c1c5020bd54cd39272e13769d0413b9a7c2f458622fe2ac387a4ca",
-    "tests/test_v3_q_weather.py": "d7774d950b12ec77ef6ffd3b9e8afabab2c7188c39ba37432598f525ada38e77"
+    "tests/test_v3_models.py": "f8ac386a63cfffd9a27757cb29a50f68bb02728ac4ba111823983eb7daca080f",
+    "tests/test_v3_outcomes.py": "9951c776a62213570a1557ae750441a132e932bf36ab9e52bab3d09979c68df1",
+    "tests/test_v3_q_weather.py": "d7774d950b12ec77ef6ffd3b9e8afabab2c7188c39ba37432598f525ada38e77",
+    "tests/test_v3_scoring.py": "c4e77107f7fef7987e7d0a21a4ec036c1581b0751fc43a65e640890328e538c8"
   },
   "frozen_ledger_schemas": {
     "csi300_outcome_ledger.parquet": {
-      "field_count": 27,
-      "schema_sha256": "eed49853dfb5e972a4280d2a005bcd324603c7d8c57ef0910c60ce456ee415d3"
+      "field_count": 29,
+      "schema_sha256": "a652684c8aabbcf5e656ab2ae383f7ca60db2bbd00d9f88b43802e8b892d01b3"
     },
     "csi300_p_ledger.parquet": {
-      "field_count": 66,
-      "schema_sha256": "851d068bf449781c9587e9b151202797b21c8ca256f2abdc8e43940f2149972d"
+      "field_count": 77,
+      "schema_sha256": "3f12fc9ea3aef769186f90e63c2b8191ba6d4817d6b3f7aa3c5557c40bc59f9a"
     },
     "csi300_q_ledger.parquet": {
       "field_count": 49,
       "schema_sha256": "2983c9e359a8b8b40785814b3d3eda7fb28133a44e8ae7bb967a19f141c1b407"
     },
     "csi300_qp_ledger.parquet": {
-      "field_count": 26,
-      "schema_sha256": "12cc482f97c39a7770aabe8e3e1279fcf5b8ce0dc1dee8282a9db4827259e815"
+      "field_count": 31,
+      "schema_sha256": "3578e41adb39bd510ec7b33a2f9a6738e8b152a651084092923bb38fdbb92287"
     }
   },
   "frozen_historical_artifacts": {
-    "data/processed/v3/csi300_outcome_ledger.parquet": "6d8dc4effcb608886926dce9c5ea06fc05b296b5f42e6705a3d5c8ec1f6c0545",
-    "data/processed/v3/csi300_p_ledger.parquet": "795a01a1c66bb3ecfd19d221f49be29ae8bb6a23d0c8f17195222436c29ea173",
-    "data/processed/v3/csi300_q_ledger.parquet": "16f194bd616c4144ab8e627ec0c02a56ada9008ef7bb62c5b7bf99f60d2e34a2",
-    "data/processed/v3/csi300_qp_ledger.parquet": "32c61f22bf9f1b28f6f28e1d8c58c75b33046858c46d43630f4353efa5a75a29"
+    "data/processed/v3/csi300_outcome_ledger.parquet": "c1e2473bc1835d88680b350be2dba674d6245141f250f8162c10f7dc1481f049",
+    "data/processed/v3/csi300_p_ledger.parquet": "08bba11923e317519f0cd84a77864d8b60ed86bcbce3edbb237e5e581f24faf4",
+    "data/processed/v3/csi300_q_ledger.parquet": "d365af0db0acd3333d4268aa1a1180a023a5dfbc698353d243f73454334cd3e8",
+    "data/processed/v3/csi300_qp_ledger.parquet": "54713ebdba49c17902db4dbb7270fdda604699858316dc1d49c7b8a7004d9bf9"
   },
   "forward_activation": {
     "status": "PROSPECTIVE_CONFIRMATION_PENDING",
-    "activation_boundary_utc": "2026-08-23T18:34:13Z",
-    "not_before_session": "2026-08-24",
+    "activation_boundary_utc": "2026-08-24T18:13:42Z",
+    "not_before_session": "2026-08-25",
     "eligible_observation": "naturally arriving receipt with known_at strictly after activation boundary",
     "historical_backfill_allowed": false,
     "recompute_frozen_predictions_allowed": false,
